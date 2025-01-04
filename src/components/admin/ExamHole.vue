@@ -1,0 +1,791 @@
+<template>
+  <div class="container">
+    <h1>Exam Hall Management</h1>
+
+    <!-- Admin Controls: Add New Exam Hall -->
+    <div v-if="isAdmin" class="admin-section">
+      <div class="form-container">
+        <h2>Add New Exam Hall</h2>
+        <form @submit.prevent="addExamHole">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Hall Name</label>
+              <input v-model="newExamHole.holeName" type="text" required />
+            </div>
+            <div class="form-group">
+              <label>Number</label>
+              <input
+                v-model.number="newExamHole.number"
+                type="number"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label>Capacity</label>
+              <input
+                v-model.number="newExamHole.capacity"
+                type="number"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label>Rows</label>
+              <input v-model.number="newExamHole.row" type="number" required />
+            </div>
+            <div class="form-group">
+              <label>Columns</label>
+              <input v-model.number="newExamHole.col" type="number" required />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary" :disabled="isLoading">
+            {{ isLoading ? "Adding..." : "Add Exam Hall" }}
+          </button>
+        </form>
+        <p
+          v-if="examHoleMessage"
+          :class="{ success: isExamHoleSuccess, error: !isExamHoleSuccess }"
+        >
+          {{ examHoleMessage }}
+        </p>
+      </div>
+    </div>
+
+    <!-- Exam Halls List -->
+    <div class="table-container">
+      <div class="table-header">
+        <h2>Exam Halls</h2>
+        <div class="button-group">
+          <button @click="loadAvailableExamHoles" class="btn btn-success">
+            Show Available
+          </button>
+          <button @click="loadAllExamHoles" class="btn btn-secondary">
+            Show All
+          </button>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Number</th>
+            <th>Capacity</th>
+            <th>Available Slots</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="hall in examHoles" :key="hall.id">
+            <td>{{ hall.holeName }}</td>
+            <td>{{ hall.number }}</td>
+            <td>{{ hall.capacity }}</td>
+            <td>{{ hall.availableSlots }}</td>
+            <td class="actions">
+              <button @click="viewUsers(hall.id)" class="btn-link">
+                View Users
+              </button>
+              <button
+                v-if="isAdmin"
+                @click="openEditModal(hall)"
+                class="btn-link"
+              >
+                Edit
+              </button>
+              <button
+                v-if="isAdmin"
+                @click="confirmDeleteHall(hall.id)"
+                class="btn-link delete"
+              >
+                Delete
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Users Modal -->
+    <div v-if="showUsersModal" class="modal">
+      <div class="modal-content">
+        <h3>Users in Hall: {{ currentHallName }}</h3>
+        <div class="users-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Seat Number</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="user in usersInHall" :key="user.userId">
+                <td>{{ user.fname }} {{ user.lname }}</td>
+                <td>{{ user.email }}</td>
+                <td>{{ user.seatNumber }}</td>
+                <td>
+                  <button @click="openEditUserModal(user)" class="btn-link">
+                    Edit
+                  </button>
+                  <button
+                    @click="removeUserFromHall(currentHallId, user.userId)"
+                    class="btn-link delete"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <button @click="closeUsersModal" class="btn btn-secondary">
+          Close
+        </button>
+      </div>
+    </div>
+
+    <!-- Edit User Modal -->
+  
+
+    <!-- Edit Hall Modal -->
+    <div v-if="showEditModal" class="modal">
+      <div class="modal-content">
+        <h3>Edit Exam Hall</h3>
+        <form @submit.prevent="updateExamHall">
+          <div class="form-group">
+            <label>Hall Name</label>
+            <input v-model="editExamHole.holeName" type="text" required />
+          </div>
+          <div class="form-group">
+            <label>Number</label>
+            <input
+              v-model.number="editExamHole.number"
+              type="number"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label>Capacity</label>
+            <input
+              v-model.number="editExamHole.capacity"
+              type="number"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label>Rows</label>
+            <input v-model.number="editExamHole.row" type="number" required />
+          </div>
+          <div class="form-group">
+            <label>Columns</label>
+            <input v-model.number="editExamHole.col" type="number" required />
+          </div>
+          <button type="submit" class="btn btn-primary" :disabled="isLoading">
+            {{ isLoading ? "Updating..." : "Update Exam Hall" }}
+          </button>
+          <button
+            @click="closeEditModal"
+            type="button"
+            class="btn btn-secondary"
+          >
+            Cancel
+          </button>
+        </form>
+        <p
+          v-if="editMessage"
+          :class="{ success: isEditSuccess, error: !isEditSuccess }"
+        >
+          {{ editMessage }}
+        </p>
+      </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div v-if="showDeleteConfirm" class="modal">
+      <div class="modal-content">
+        <h3>Confirm Deletion</h3>
+        <p>Are you sure you want to delete this exam hall?</p>
+        <button
+          @click="deleteHall"
+          class="btn btn-danger"
+          :disabled="isLoading"
+        >
+          {{ isLoading ? "Deleting..." : "Yes, Delete" }}
+        </button>
+        <button @click="closeDeleteConfirm" class="btn btn-secondary">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+<script>
+import axios from "axios";
+
+export default {
+  name: "ExamHallManagement",
+  data() {
+    return {
+      baseUrl: "http://localhost:8081/api/v1",
+      examHoles: [],
+      usersInHall: [],
+      availableUsers: [],
+      showUsersModal: false,
+      showEditUserModal: false, // New modal for editing user seat
+      showEditModal: false,
+      showDeleteConfirm: false,
+      currentHallId: null,
+      currentHallName: "",
+      isAdmin: true, // Replace with actual admin check logic
+      newExamHole: {
+        holeName: "",
+        number: null,
+        capacity: null,
+        row: null,
+        col: null,
+      },
+      editExamHole: {
+        id: null,
+        holeName: "",
+        number: null,
+        capacity: null,
+        row: null,
+        col: null,
+      },
+      selectedUserId: "",
+      selectedSeatNumber: null, // New data property for seat number
+      editUser: null, // User being edited
+      newSeatNumber: null, // New seat number for editing
+      examHoleMessage: "",
+      isExamHoleSuccess: false,
+      userActionMessage: "",
+      isUserActionSuccess: false,
+      editMessage: "",
+      isEditSuccess: false,
+      editUserMessage: "",
+      isEditUserSuccess: false,
+      deleteHallId: null,
+      isLoading: false,
+    };
+  },
+  computed: {
+    // Compute available seats based on hall capacity and current assignments
+    availableSeats() {
+      const hall = this.examHoles.find((h) => h.id === this.currentHallId);
+      if (hall) {
+        const occupiedSeats = this.usersInHall.map((user) => user.seatNumber);
+        const totalSeats = hall.capacity;
+        const available = [];
+        for (let i = 1; i <= totalSeats; i++) {
+          if (!occupiedSeats.includes(i)) {
+            available.push(i);
+          }
+        }
+        return available;
+      }
+      return [];
+    },
+    // Compute available seats for editing (including the user's current seat)
+    availableSeatsForEdit() {
+      if (!this.editUser) return [];
+      const hall = this.examHoles.find((h) => h.id === this.currentHallId);
+      if (hall) {
+        const occupiedSeats = this.usersInHall
+          .filter((user) => user.userId !== this.editUser.userId)
+          .map((user) => user.seatNumber);
+        // Include the user's current seat as it's being edited
+        const available = [];
+        for (let i = 1; i <= hall.capacity; i++) {
+          if (!occupiedSeats.includes(i)) {
+            available.push(i);
+          }
+        }
+        // Also include the current seat
+        if (!occupiedSeats.includes(this.editUser.seatNumber)) {
+          available.push(this.editUser.seatNumber);
+        }
+        return available.sort((a, b) => a - b);
+      }
+      return [];
+    },
+  },
+  created() {
+    this.loadAllExamHoles();
+  },
+  methods: {
+    // Load all exam halls
+    async loadAllExamHoles() {
+      this.isLoading = true;
+      try {
+        const response = await axios.get(
+          `${this.baseUrl}/examhole/getAllExamHoles`
+        );
+        this.examHoles = response.data;
+        this.examHoleMessage = "";
+      } catch (error) {
+        console.error("Error loading exam halls:", error);
+        this.examHoleMessage = "Failed to load exam halls.";
+        this.isExamHoleSuccess = false;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // Load available exam halls (with available slots)
+    async loadAvailableExamHoles() {
+      this.isLoading = true;
+      try {
+        const response = await axios.get(
+          `${this.baseUrl}/examhole/getAvailableExamHoles`
+        );
+        this.examHoles = response.data;
+        this.examHoleMessage = "";
+      } catch (error) {
+        console.error("Error loading available exam halls:", error);
+        this.examHoleMessage = "Failed to load available exam halls.";
+        this.isExamHoleSuccess = false;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // Add a new exam hall
+    async addExamHole() {
+      this.isLoading = true;
+      try {
+        const response = await axios.post(
+          `${this.baseUrl}/examhole/addExamHole`,
+          this.newExamHole
+        );
+        this.examHoleMessage = "Exam hall added successfully!";
+        this.isExamHoleSuccess = true;
+        await this.loadAllExamHoles();
+        // Reset form
+        this.newExamHole = {
+          holeName: "",
+          number: null,
+          capacity: null,
+          row: null,
+          col: null,
+        };
+      } catch (error) {
+        console.error("Error adding exam hall:", error);
+        this.examHoleMessage = "Failed to add exam hall.";
+        this.isExamHoleSuccess = false;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // Confirm deletion of a hall
+    confirmDeleteHall(id) {
+      this.deleteHallId = id;
+      this.showDeleteConfirm = true;
+    },
+
+    // Delete an exam hall
+    async deleteHall() {
+      if (!this.deleteHallId) return;
+      this.isLoading = true;
+      try {
+        await axios.delete(
+          `${this.baseUrl}/examhole/deleteExamHole/${this.deleteHallId}`
+        );
+        this.examHoleMessage = "Exam hall deleted successfully!";
+        this.isExamHoleSuccess = true;
+        await this.loadAllExamHoles();
+      } catch (error) {
+        console.error("Error deleting exam hall:", error);
+        this.examHoleMessage = "Failed to delete exam hall.";
+        this.isExamHoleSuccess = false;
+      } finally {
+        this.isLoading = false;
+        this.showDeleteConfirm = false;
+        this.deleteHallId = null;
+      }
+    },
+
+    // Close delete confirmation modal
+    closeDeleteConfirm() {
+      this.showDeleteConfirm = false;
+      this.deleteHallId = null;
+    },
+
+    // View users in a hall
+    async viewUsers(hallId) {
+      this.isLoading = true;
+      try {
+        const hall = this.examHoles.find((h) => h.id === hallId);
+        if (!hall) throw new Error("Hall not found.");
+        this.currentHallId = hallId;
+        this.currentHallName = hall.holeName;
+        const response = await axios.get(
+          `${this.baseUrl}/examhole/getUsersInExamHole/${hallId}/users`
+        );
+        this.usersInHall = response.data; // Should contain userId, fname, lname, email, seatNumber
+        this.showUsersModal = true;
+        // Load available users to add (excluding those already in the hall)
+        const allUsersResponse = await axios.get(
+          `${this.baseUrl}/user/getAllUsers`
+        );
+        const usersInHallIds = this.usersInHall.map((user) => user.userId);
+        this.availableUsers = allUsersResponse.data.filter(
+          (user) => !usersInHallIds.includes(user.id)
+        );
+        this.userActionMessage = "";
+        this.isUserActionSuccess = false;
+        this.selectedUserId = "";
+        this.selectedSeatNumber = null; // Reset seat number input
+      } catch (error) {
+        console.error("Error loading users:", error);
+        this.userActionMessage = "Failed to load users.";
+        this.isUserActionSuccess = false;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // Close users modal
+    closeUsersModal() {
+      this.showUsersModal = false;
+      this.usersInHall = [];
+      this.availableUsers = [];
+      this.selectedUserId = "";
+      this.selectedSeatNumber = null;
+      this.userActionMessage = "";
+      this.isUserActionSuccess = false;
+      this.currentHallId = null;
+      this.currentHallName = "";
+    },
+
+   
+
+    // Remove user from hall
+    // Remove user from hall
+    async removeUserFromHall(hallId, userId) {
+      if (confirm("Are you sure you want to remove this user from the hall?"))
+        return;
+      this.isLoading = true;
+      try {
+        const response = await axios.delete(
+          `${this.baseUrl}/examhole/removeUserFromExamHole/${hallId}/users/${userId}`
+        );
+        this.userActionMessage = response.data; // "User removed from hall successfully"
+        this.isUserActionSuccess = true;
+        // Refresh users list
+        await this.viewUsers(hallId);
+      } catch (error) {
+        console.error("Error removing user from hall:", error);
+        if (error.response && error.response.data) {
+          this.userActionMessage = error.response.data;
+        } else {
+          this.userActionMessage = "Failed to remove user from hall.";
+        }
+        this.isUserActionSuccess = false;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // Open edit modal for a specific user
+    openEditUserModal(user) {
+      this.editUser = { ...user }; // Clone the user object
+      this.newSeatNumber = null; // Reset the new seat number
+      this.showEditUserModal = true;
+      this.editUserMessage = "";
+      this.isEditUserSuccess = false;
+    },
+
+    // Close edit user modal
+    closeEditUserModal() {
+      this.showEditUserModal = false;
+      this.editUser = null;
+      this.newSeatNumber = null;
+      this.editUserMessage = "";
+      this.isEditUserSuccess = false;
+    },
+
+    // Edit user's seat number
+    async editUserSeat() {
+      if (!this.newSeatNumber) {
+        this.editUserMessage = "Please select a new seat number.";
+        this.isEditUserSuccess = false;
+        return;
+      }
+      this.isLoading = true;
+      try {
+        const response = await axios.put(
+          `${this.baseUrl}/examhole/editUserSeatInExamHole/${this.currentHallId}/users/${this.editUser.userId}`,
+          {
+            seatNumber: this.newSeatNumber,
+          }
+        );
+        this.editUserMessage = response.data; // "User's seat number updated successfully to <newSeatNumber>"
+        this.isEditUserSuccess = true;
+        // Refresh users list
+        await this.viewUsers(this.currentHallId);
+        // Close the modal after a short delay
+        setTimeout(() => {
+          this.closeEditUserModal();
+        }, 1500);
+      } catch (error) {
+        console.error("Error editing user seat:", error);
+        if (error.response && error.response.data) {
+          this.editUserMessage = error.response.data;
+        } else {
+          this.editUserMessage = "Failed to edit user seat number.";
+        }
+        this.isEditUserSuccess = false;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // Open edit modal with hall details
+    openEditModal(hall) {
+      this.editExamHole = { ...hall };
+      this.showEditModal = true;
+      this.editMessage = "";
+      this.isEditSuccess = false;
+    },
+
+    // Close edit modal
+    closeEditModal() {
+      this.showEditModal = false;
+      this.editExamHole = {
+        id: null,
+        holeName: "",
+        number: null,
+        capacity: null,
+        row: null,
+        col: null,
+      };
+      this.editMessage = "";
+      this.isEditSuccess = false;
+    },
+
+    // Update exam hall details
+    async updateExamHall() {
+      this.isLoading = true;
+      try {
+        await axios.put(
+          `${this.baseUrl}/examhole/updateExamHole/${this.editExamHole.id}`,
+          this.editExamHole
+        );
+        this.editMessage = "Exam hall updated successfully!";
+        this.isEditSuccess = true;
+        await this.loadAllExamHoles();
+        // Close the modal after a short delay
+        setTimeout(() => {
+          this.closeEditModal();
+        }, 1500);
+      } catch (error) {
+        console.error("Error updating exam hall:", error);
+        this.editMessage = "Failed to update exam hall.";
+        this.isEditSuccess = false;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+  },
+};
+</script>
+
+<style scoped>
+.container {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 24px;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+h2 {
+  font-size: 20px;
+  margin-bottom: 15px;
+  color: #444;
+}
+
+.admin-section {
+  margin-bottom: 30px;
+}
+
+.form-container {
+  background: #fff;
+  padding: 20px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+  color: #666;
+}
+
+input,
+select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-right: 10px;
+}
+
+.btn-primary {
+  background: #4a90e2;
+  color: white;
+}
+
+.btn-success {
+  background: #2ecc71;
+  color: white;
+}
+
+.btn-secondary {
+  background: #95a5a6;
+  color: white;
+}
+
+.btn-danger {
+  background: #e74c3c;
+  color: white;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #4a90e2;
+  cursor: pointer;
+  margin-right: 10px;
+  text-decoration: underline;
+}
+
+.btn-link.delete {
+  color: #e74c3c;
+}
+
+.table-container {
+  background: #fff;
+  padding: 20px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #666;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+}
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #fff;
+  padding: 20px;
+  border-radius: 5px;
+  width: 60%;
+  max-height: 80vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.users-table {
+  margin: 15px 0;
+}
+
+.add-user-section {
+  margin-top: 20px;
+}
+
+.success {
+  color: green;
+  margin-top: 10px;
+}
+
+.error {
+  color: red;
+  margin-top: 10px;
+}
+
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-content {
+    width: 90%;
+  }
+
+  .table-header {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+</style>
