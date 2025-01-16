@@ -14,19 +14,11 @@
             </div>
             <div class="form-group">
               <label>Number</label>
-              <input
-                v-model.number="newExamHole.number"
-                type="number"
-                required
-              />
+              <input v-model.number="newExamHole.number" type="number" required />
             </div>
             <div class="form-group">
               <label>Capacity</label>
-              <input
-                v-model.number="newExamHole.capacity"
-                type="number"
-                required
-              />
+              <input v-model.number="newExamHole.capacity" type="number" required />
             </div>
             <div class="form-group">
               <label>Rows</label>
@@ -41,10 +33,7 @@
             {{ isLoading ? "Adding..." : "Add Exam Hall" }}
           </button>
         </form>
-        <p
-          v-if="examHoleMessage"
-          :class="{ success: isExamHoleSuccess, error: !isExamHoleSuccess }"
-        >
+        <p v-if="examHoleMessage" :class="{ success: isExamHoleSuccess, error: !isExamHoleSuccess }">
           {{ examHoleMessage }}
         </p>
       </div>
@@ -63,7 +52,6 @@
           </button>
         </div>
       </div>
-
       <table>
         <thead>
           <tr>
@@ -84,20 +72,20 @@
               <button @click="viewUsers(hall.id)" class="btn-link">
                 View Users
               </button>
-              <button
-                v-if="isAdmin"
-                @click="openEditModal(hall)"
-                class="btn-link"
-              >
+              <button v-if="isAdmin" @click="openEditModal(hall)" class="btn-link">
                 Edit
               </button>
-              <button
-                v-if="isAdmin"
-                @click="confirmDeleteHall(hall.id)"
-                class="btn-link delete"
-              >
+              <button v-if="isAdmin" @click="confirmDeleteHall(hall.id)" class="btn-link delete">
                 Delete
               </button>
+              <div class="button-group">
+                <!-- <button v-if="isAdmin" @click="addAllUsersToHall(hall.id)" class="btn-link add-all">
+                  Add All Users
+                </button> -->
+                <button v-if="isAdmin" @click="openImportModal(hall.id)" class="btn-link import">
+                  Import Users
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -108,6 +96,32 @@
     <div v-if="showUsersModal" class="modal">
       <div class="modal-content">
         <h3>Users in Hall: {{ currentHallName }}</h3>
+        <!-- Add User Form -->
+        <div v-if="isAdmin" class="add-user-section">
+          <h4>Add User to Hall</h4>
+          <form @submit.prevent="assignUserToHall">
+            <div class="form-group">
+              <label>Select User</label>
+              <select v-model="selectedUserId" required>
+                <option disabled value="">Please select a user</option>
+                <option v-for="user in availableUsers" :key="user.id" :value="user.id">
+                  {{ user.fname }} {{ user.lname }} ({{ user.email }})
+                </option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Seat Number</label>
+              <input v-model="selectedSeatNumber" type="text" placeholder="e.g., A1" required />
+            </div>
+            <button type="submit" class="btn btn-primary" :disabled="isLoading">
+              {{ isLoading ? "Assigning..." : "Assign User" }}
+            </button>
+          </form>
+          <p v-if="userActionMessage" :class="{ success: isUserActionSuccess, error: !isUserActionSuccess }">
+            {{ userActionMessage }}
+          </p>
+        </div>
+        <!-- Users Table -->
         <div class="users-table">
           <table>
             <thead>
@@ -127,10 +141,7 @@
                   <button @click="openEditUserModal(user)" class="btn-link">
                     Edit
                   </button>
-                  <button
-                    @click="removeUserFromHall(currentHallId, user.userId)"
-                    class="btn-link delete"
-                  >
+                  <button @click="removeUserFromHall(currentHallId, user.userId)" class="btn-link delete">
                     Remove
                   </button>
                 </td>
@@ -138,15 +149,58 @@
             </tbody>
           </table>
         </div>
-        
         <button @click="closeUsersModal" class="btn btn-secondary">
           Close
         </button>
       </div>
     </div>
 
+    <!-- Import Excel Modal -->
+    <div v-if="showImportModal" class="modal">
+      <div class="modal-content">
+        <h3>Import Users for {{ currentHallName }}</h3>
+        <div class="import-section">
+          <form @submit.prevent="importExcelData">
+            <div class="form-group">
+              <label>Select Excel File</label>
+              <input type="file" @change="handleFileUpload" accept=".xlsx,.xls" required />
+              <small>Excel file should contain columns: user_id, seat_number</small>
+            </div>
+            <button type="submit" class="btn btn-primary" :disabled="isLoading">
+              {{ isLoading ? 'Importing...' : 'Import Users' }}
+            </button>
+            <button @click="closeImportModal" type="button" class="btn btn-secondary">
+              Cancel
+            </button>
+          </form>
+          <p v-if="importMessage" :class="{ success: isImportSuccess, error: !isImportSuccess }">
+            {{ importMessage }}
+          </p>
+        </div>
+      </div>
+    </div>
+
     <!-- Edit User Modal -->
-  
+    <div v-if="showEditUserModal" class="modal">
+      <div class="modal-content">
+        <h3>Edit User's Seat Number</h3>
+        <form @submit.prevent="editUserSeat">
+          <div class="form-group">
+            <label>Seat Number</label>
+            <input v-model="newSeatNumber" type="text" placeholder="e.g., B2" required />
+          </div>
+          <button type="submit" class="btn btn-primary" :disabled="isLoading">
+            {{ isLoading ? "Updating..." : "Update Seat" }}
+          </button>
+          <button @click="closeEditUserModal" type="button" class="btn btn-secondary">
+            Cancel
+          </button>
+        </form>
+        <p v-if="editUserMessage" :class="{ success: isEditUserSuccess, error: !isEditUserSuccess }">
+          {{ editUserMessage }}
+        </p>
+      </div>
+    </div>
 
     <!-- Edit Hall Modal -->
     <div v-if="showEditModal" class="modal">
@@ -159,19 +213,11 @@
           </div>
           <div class="form-group">
             <label>Number</label>
-            <input
-              v-model.number="editExamHole.number"
-              type="number"
-              required
-            />
+            <input v-model.number="editExamHole.number" type="number" required />
           </div>
           <div class="form-group">
             <label>Capacity</label>
-            <input
-              v-model.number="editExamHole.capacity"
-              type="number"
-              required
-            />
+            <input v-model.number="editExamHole.capacity" type="number" required />
           </div>
           <div class="form-group">
             <label>Rows</label>
@@ -184,18 +230,11 @@
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             {{ isLoading ? "Updating..." : "Update Exam Hall" }}
           </button>
-          <button
-            @click="closeEditModal"
-            type="button"
-            class="btn btn-secondary"
-          >
+          <button @click="closeEditModal" type="button" class="btn btn-secondary">
             Cancel
           </button>
         </form>
-        <p
-          v-if="editMessage"
-          :class="{ success: isEditSuccess, error: !isEditSuccess }"
-        >
+        <p v-if="editMessage" :class="{ success: isEditSuccess, error: !isEditSuccess }">
           {{ editMessage }}
         </p>
       </div>
@@ -206,14 +245,24 @@
       <div class="modal-content">
         <h3>Confirm Deletion</h3>
         <p>Are you sure you want to delete this exam hall?</p>
-        <button
-          @click="deleteHall"
-          class="btn btn-danger"
-          :disabled="isLoading"
-        >
+        <button @click="deleteHall" class="btn btn-danger" :disabled="isLoading">
           {{ isLoading ? "Deleting..." : "Yes, Delete" }}
         </button>
         <button @click="closeDeleteConfirm" class="btn btn-secondary">
+          Cancel
+        </button>
+      </div>
+    </div>
+
+    <!-- Add All Users Confirmation Modal -->
+    <div v-if="showAddAllConfirm" class="modal">
+      <div class="modal-content">
+        <h3>Confirm Add All Users</h3>
+        <p>Are you sure you want to add all available users to this hall?</p>
+        <button @click="confirmAddAllUsers" class="btn btn-danger" :disabled="isLoading">
+          {{ isLoading ? "Adding..." : "Yes, Add All" }}
+        </button>
+        <button @click="closeAddAllConfirm" class="btn btn-secondary">
           Cancel
         </button>
       </div>
@@ -227,17 +276,39 @@ export default {
   name: "ExamHallManagement",
   data() {
     return {
+      // Import Excel Modal Data
+      fileUpload: null,
+      importMessage: '',
+      isImportSuccess: false,
+      showImportModal: false,
+
+      // Base URL for API
       baseUrl: "http://localhost:8081/api/v1",
+
+      // Exam Halls Data
       examHoles: [],
+
+      // Users in Selected Hall
       usersInHall: [],
+
+      // Available Users to Assign
       availableUsers: [],
+
+      // Modals Visibility
       showUsersModal: false,
-      showEditUserModal: false, // New modal for editing user seat
+      showEditUserModal: false,
       showEditModal: false,
       showDeleteConfirm: false,
+      showAddAllConfirm: false,
+
+      // Current Exam Hall Info
       currentHallId: null,
       currentHallName: "",
-      isAdmin: true, // Replace with actual admin check logic
+
+      // Admin Check (Replace with actual logic)
+      isAdmin: true,
+
+      // New Exam Hall Form Data
       newExamHole: {
         holeName: "",
         number: null,
@@ -245,6 +316,8 @@ export default {
         row: null,
         col: null,
       },
+
+      // Edit Exam Hall Form Data
       editExamHole: {
         id: null,
         holeName: "",
@@ -253,10 +326,16 @@ export default {
         row: null,
         col: null,
       },
+
+      // Assign User to Hall Data
       selectedUserId: "",
-      selectedSeatNumber: null, // New data property for seat number
-      editUser: null, // User being edited
-      newSeatNumber: null, // New seat number for editing
+      selectedSeatNumber: "",
+
+      // Edit User Seat Data
+      editUser: null,
+      newSeatNumber: "",
+
+      // Messages and Statuses
       examHoleMessage: "",
       isExamHoleSuccess: false,
       userActionMessage: "",
@@ -265,7 +344,13 @@ export default {
       isEditSuccess: false,
       editUserMessage: "",
       isEditUserSuccess: false,
+      importMessage: '',
+      isImportSuccess: false,
+
+      // Deletion Data
       deleteHallId: null,
+
+      // Loading State
       isLoading: false,
     };
   },
@@ -278,8 +363,8 @@ export default {
         const totalSeats = hall.capacity;
         const available = [];
         for (let i = 1; i <= totalSeats; i++) {
-          if (!occupiedSeats.includes(i)) {
-            available.push(i);
+          if (!occupiedSeats.includes(String(i))) {
+            available.push(String(i));
           }
         }
         return available;
@@ -297,15 +382,15 @@ export default {
         // Include the user's current seat as it's being edited
         const available = [];
         for (let i = 1; i <= hall.capacity; i++) {
-          if (!occupiedSeats.includes(i)) {
-            available.push(i);
+          if (!occupiedSeats.includes(String(i))) {
+            available.push(String(i));
           }
         }
         // Also include the current seat
         if (!occupiedSeats.includes(this.editUser.seatNumber)) {
           available.push(this.editUser.seatNumber);
         }
-        return available.sort((a, b) => a - b);
+        return available.sort((a, b) => Number(a) - Number(b));
       }
       return [];
     },
@@ -436,7 +521,7 @@ export default {
         this.userActionMessage = "";
         this.isUserActionSuccess = false;
         this.selectedUserId = "";
-        this.selectedSeatNumber = null; // Reset seat number input
+        this.selectedSeatNumber = ""; // Reset seat number input
       } catch (error) {
         console.error("Error loading users:", error);
         this.userActionMessage = "Failed to load users.";
@@ -452,26 +537,25 @@ export default {
       this.usersInHall = [];
       this.availableUsers = [];
       this.selectedUserId = "";
-      this.selectedSeatNumber = null;
+      this.selectedSeatNumber = "";
       this.userActionMessage = "";
       this.isUserActionSuccess = false;
       this.currentHallId = null;
       this.currentHallName = "";
     },
 
-   
 
     // Remove user from hall
-    // Remove user from hall
     async removeUserFromHall(hallId, userId) {
-      if (confirm("Are you sure you want to remove this user from the hall?"))
-        return;
+      if (!confirm("Are you sure you want to remove this user from the hall?")) {
+        return; // Exit if user cancels
+      }
       this.isLoading = true;
       try {
         const response = await axios.delete(
           `${this.baseUrl}/examhole/removeUserFromExamHole/${hallId}/users/${userId}`
         );
-        this.userActionMessage = response.data; // "User removed from hall successfully"
+        this.userActionMessage = "User removed from hall successfully.";
         this.isUserActionSuccess = true;
         // Refresh users list
         await this.viewUsers(hallId);
@@ -491,7 +575,7 @@ export default {
     // Open edit modal for a specific user
     openEditUserModal(user) {
       this.editUser = { ...user }; // Clone the user object
-      this.newSeatNumber = null; // Reset the new seat number
+      this.newSeatNumber = ""; // Reset the new seat number
       this.showEditUserModal = true;
       this.editUserMessage = "";
       this.isEditUserSuccess = false;
@@ -501,7 +585,7 @@ export default {
     closeEditUserModal() {
       this.showEditUserModal = false;
       this.editUser = null;
-      this.newSeatNumber = null;
+      this.newSeatNumber = "";
       this.editUserMessage = "";
       this.isEditUserSuccess = false;
     },
@@ -509,7 +593,7 @@ export default {
     // Edit user's seat number
     async editUserSeat() {
       if (!this.newSeatNumber) {
-        this.editUserMessage = "Please select a new seat number.";
+        this.editUserMessage = "Please enter a new seat number.";
         this.isEditUserSuccess = false;
         return;
       }
@@ -521,7 +605,7 @@ export default {
             seatNumber: this.newSeatNumber,
           }
         );
-        this.editUserMessage = response.data; // "User's seat number updated successfully to <newSeatNumber>"
+        this.editUserMessage = "User's seat number updated successfully.";
         this.isEditUserSuccess = true;
         // Refresh users list
         await this.viewUsers(this.currentHallId);
@@ -534,7 +618,7 @@ export default {
         if (error.response && error.response.data) {
           this.editUserMessage = error.response.data;
         } else {
-          this.editUserMessage = "Failed to edit user seat number.";
+          this.editUserMessage = "Failed to update user's seat number.";
         }
         this.isEditUserSuccess = false;
       } finally {
@@ -588,9 +672,194 @@ export default {
         this.isLoading = false;
       }
     },
+
+    // Assign single user to hall
+    async assignUserToHall() {
+      if (!this.selectedUserId || !this.selectedSeatNumber) {
+        this.userActionMessage = "Please select a user and enter a seat number.";
+        this.isUserActionSuccess = false;
+        return;
+      }
+
+      // Validate seat number format (e.g., "A1", "B2")
+      const seatPattern = /^[A-Z]\d+$/;
+      if (!seatPattern.test(this.selectedSeatNumber)) {
+        this.userActionMessage = "Invalid seat number format. Use format like 'A1', 'B2'.";
+        this.isUserActionSuccess = false;
+        return;
+      }
+
+      this.isLoading = true;
+      try {
+        // Construct the URL with path variables
+        const url = `${this.baseUrl}/examhole/addUserToExamHole/${this.currentHallId}/users/${this.selectedUserId}`;
+
+        // Make the POST request with seatNumber in the body
+        await axios.post(url, {
+          seatNumber: this.selectedSeatNumber,
+        });
+
+        this.userActionMessage = `User assigned successfully to seat ${this.selectedSeatNumber}.`;
+        this.isUserActionSuccess = true;
+
+        // Refresh users list
+        await this.viewUsers(this.currentHallId);
+
+        // Reset assignment form
+        this.selectedUserId = "";
+        this.selectedSeatNumber = "";
+      } catch (error) {
+        console.error("Error assigning user to hall:", error);
+        if (error.response && error.response.data) {
+          this.userActionMessage = error.response.data;
+        } else {
+          this.userActionMessage = "Failed to assign user to hall.";
+        }
+        this.isUserActionSuccess = false;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+
+    // Open Add All Users Confirmation Modal
+    addAllUsersToHall(hallId) {
+      this.currentHallId = hallId;
+      const hall = this.examHoles.find((h) => h.id === hallId);
+      this.currentHallName = hall ? hall.holeName : "";
+      this.showAddAllConfirm = true;
+    },
+
+    // Confirm adding all users
+    async confirmAddAllUsers() {
+      this.isLoading = true;
+      try {
+        const response = await axios.post(
+          `${this.baseUrl}/examhole/assignAllUsersToExamHole`,
+          {
+            examHoleId: this.currentHallId,
+          }
+        );
+        this.userActionMessage = "All available users have been assigned to the hall successfully.";
+        this.isUserActionSuccess = true;
+        // Refresh users list
+        await this.viewUsers(this.currentHallId);
+      } catch (error) {
+        console.error("Error adding all users to hall:", error);
+        if (error.response && error.response.data) {
+          this.userActionMessage = error.response.data;
+        } else {
+          this.userActionMessage = "Failed to add all users to hall.";
+        }
+        this.isUserActionSuccess = false;
+      } finally {
+        this.isLoading = false;
+        this.showAddAllConfirm = false;
+      }
+    },
+
+    // Close Add All Users Confirmation Modal
+    closeAddAllConfirm() {
+      this.showAddAllConfirm = false;
+    },
+
+    // Open Import Users Modal
+    openImportModal(hallId) {
+      this.currentHallId = hallId;
+      const hall = this.examHoles.find(h => h.id === hallId);
+      this.currentHallName = hall ? hall.holeName : '';
+      this.showImportModal = true;
+      this.importMessage = '';
+      this.isImportSuccess = false;
+      this.fileUpload = null;
+    },
+
+    // Handle File Selection for Import
+    handleFileUpload(event) {
+      this.fileUpload = event.target.files[0];
+    },
+
+    // Import and process Excel file
+    async importExcelData() {
+      if (!this.fileUpload) {
+        this.importMessage = 'Please select a file to import.';
+        this.isImportSuccess = false;
+        return;
+      }
+
+      // Validate file type
+      const allowedTypes = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel'
+      ];
+      if (!allowedTypes.includes(this.fileUpload.type)) {
+        this.importMessage = 'Invalid file type. Please upload an Excel file.';
+        this.isImportSuccess = false;
+        return;
+      }
+
+      // Validate file size (e.g., max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (this.fileUpload.size > maxSize) {
+        this.importMessage = 'File size exceeds the maximum limit of 5MB.';
+        this.isImportSuccess = false;
+        return;
+      }
+
+      // Proceed with upload
+      this.isLoading = true;
+      const formData = new FormData();
+      formData.append('file', this.fileUpload);
+
+      try {
+        const response = await axios.post(
+          `${this.baseUrl}/examhole/importUsersFromExcel/${this.currentHallId}`,
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          }
+        );
+
+        this.importMessage = 'Users imported and assigned successfully!';
+        this.isImportSuccess = true;
+
+        // Refresh users list
+        await this.viewUsers(this.currentHallId);
+
+        // Close modal after short delay
+        setTimeout(() => {
+          this.closeImportModal();
+        }, 1500);
+      } catch (error) {
+        console.error('Error importing users:', error);
+        // Display detailed error message from backend if available
+        if (error.response && error.response.data) {
+          this.importMessage = error.response.data;
+        } else {
+          this.importMessage = 'Failed to import users.';
+        }
+        this.isImportSuccess = false;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+
+    // Close Import Users Modal
+    closeImportModal() {
+      this.showImportModal = false;
+      this.fileUpload = null;
+      this.importMessage = '';
+      this.isImportSuccess = false;
+    }
   },
 };
 </script>
+
+
+
 
 <style scoped>
 .container {

@@ -12,9 +12,7 @@
       <router-link to="/admin/exam-schedule" class="nav-link" exact-active-class="active-link">Exam Schedule</router-link>
       <router-link to="/admin/semester-schedule" class="nav-link" exact-active-class="active-link">Semester Schedule</router-link>
       <router-link to="/admin/users" class="nav-link" exact-active-class="active-link">Users</router-link>
-      <router-link to="/admin/student-requests" class="nav-link" exact-active-class="active-link">Student Requests</router-link>
     </div>
-
     <!-- Mobile Menu Toggle -->
     <div class="menu-toggle" @click="toggleMenu">
       <span class="bar"></span>

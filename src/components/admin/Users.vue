@@ -4,8 +4,13 @@
       <!-- Header Section -->
       <div class="user-header">
         <h1>Users</h1>
-        <!-- Add User Button -->
-        <button class="user-toggle-btn" @click="openAddModal">Add User</button>
+        <div class="user-controls">
+          <!-- Search Bar -->
+          <input type="text" v-model="searchQuery" class="user-search" placeholder="Search users..."
+            @input="filterUsers" />
+          <!-- Add User Button -->
+          <button class="user-toggle-btn" @click="openAddModal">Add User</button>
+        </div>
       </div>
 
       <!-- Users Table -->
@@ -21,12 +26,11 @@
               <th>Role</th>
               <th>Password</th>
               <th>Department</th>
-              <!-- New Column -->
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="user in users" :key="user.id">
+            <tr v-for="user in filteredUsers" :key="user.id">
               <td>{{ user.id }}</td>
               <td>{{ user.fname }} {{ user.lname }}</td>
               <td>{{ user.username }}</td>
@@ -42,13 +46,41 @@
                 <button class="user-btn-delete" @click="confirmDelete(user.id)">
                   Delete
                 </button>
+                <button class="user-btn-reset" @click="openResetPasswordModal(user)">
+                  Reset Password
+                </button>
               </td>
             </tr>
-            <tr v-if="users.length === 0">
-              <td colspan="9" class="user-no-data">No users available.</td>
+            <tr v-if="filteredUsers.length === 0">
+              <td colspan="9" class="user-no-data">No users found.</td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Password Reset Modal -->
+      <div v-if="isResetPasswordModalOpen" class="user-form-container">
+        <h3>Reset Password</h3>
+        <form @submit.prevent="resetPassword" class="user-elegant-form">
+          <div class="user-form-group">
+            <label for="new-password">New Password</label>
+            <input v-model="resetPasswordForm.newPassword" type="password" id="new-password" class="user-form-control"
+              placeholder="Enter New Password" required />
+          </div>
+          <div class="user-form-group">
+            <label for="confirm-password">Confirm Password</label>
+            <input v-model="resetPasswordForm.confirmPassword" type="password" id="confirm-password"
+              class="user-form-control" placeholder="Confirm New Password" required />
+          </div>
+          <div class="user-modal-actions">
+            <button type="button" class="user-btn-cancel" @click="closeResetPasswordModal">
+              Cancel
+            </button>
+            <button type="submit" class="user-btn-submit">
+              Reset Password
+            </button>
+          </div>
+        </form>
       </div>
 
       <!-- Modal for Add/Update User -->
@@ -57,67 +89,32 @@
         <form @submit.prevent="submitForm" class="user-elegant-form">
           <div class="user-form-group">
             <label for="first-name">First Name</label>
-            <input
-              v-model="userForm.fname"
-              type="text"
-              id="first-name"
-              class="user-form-control"
-              placeholder="Enter First Name"
-              required
-            />
+            <input v-model="userForm.fname" type="text" id="first-name" class="user-form-control"
+              placeholder="Enter First Name" required />
           </div>
           <div class="user-form-group">
             <label for="last-name">Last Name</label>
-            <input
-              v-model="userForm.lname"
-              type="text"
-              id="last-name"
-              class="user-form-control"
-              placeholder="Enter Last Name"
-              required
-            />
+            <input v-model="userForm.lname" type="text" id="last-name" class="user-form-control"
+              placeholder="Enter Last Name" required />
           </div>
           <div class="user-form-group">
             <label for="username">Username</label>
-            <input
-              v-model="userForm.username"
-              type="text"
-              id="username"
-              class="user-form-control"
-              placeholder="Enter Username"
-              required
-            />
+            <input v-model="userForm.username" type="text" id="username" class="user-form-control"
+              placeholder="Enter Username" required />
           </div>
           <div class="user-form-group">
             <label for="email">Email</label>
-            <input
-              v-model="userForm.email"
-              type="email"
-              id="email"
-              class="user-form-control"
-              placeholder="Enter Email"
-              required
-            />
+            <input v-model="userForm.email" type="email" id="email" class="user-form-control" placeholder="Enter Email"
+              required />
           </div>
           <div class="user-form-group">
             <label for="phone">Phone</label>
-            <input
-              v-model="userForm.phone"
-              type="text"
-              id="phone"
-              class="user-form-control"
-              placeholder="Enter Phone"
-              required
-            />
+            <input v-model="userForm.phone" type="text" id="phone" class="user-form-control" placeholder="Enter Phone"
+              required />
           </div>
           <div class="user-form-group">
             <label for="role">Role</label>
-            <select
-              v-model="userForm.role"
-              id="role"
-              class="user-form-control"
-              required
-            >
+            <select v-model="userForm.role" id="role" class="user-form-control" required>
               <option value="" disabled>Select Role</option>
               <option value="ADMIN">Admin</option>
               <option value="STUDENT">Student</option>
@@ -127,32 +124,17 @@
           </div>
           <div class="user-form-group">
             <label for="department">Department</label>
-            <select
-              v-model="userForm.departmentId"
-              id="department"
-              class="user-form-control"
-              required
-            >
+            <select v-model="userForm.departmentId" id="department" class="user-form-control" required>
               <option value="" disabled>Select Department</option>
-              <option
-                v-for="dept in departments"
-                :key="dept.id"
-                :value="dept.id"
-              >
+              <option v-for="dept in departments" :key="dept.id" :value="dept.id">
                 {{ dept.name }}
               </option>
             </select>
           </div>
           <div class="user-form-group">
             <label for="password">Password</label>
-            <input
-              v-model="userForm.password"
-              type="password"
-              id="password"
-              class="user-form-control"
-              placeholder="Enter Password"
-              required
-            />
+            <input v-model="userForm.password" type="password" id="password" class="user-form-control"
+              placeholder="Enter Password" required />
           </div>
           <div class="user-modal-actions">
             <button type="button" class="user-btn-cancel" @click="closeModal">
@@ -169,14 +151,22 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import axios from "axios";
 
 // Reactive state for user data
 const users = ref([]);
 const departments = ref([]); // State for departments
+const searchQuery = ref("");
+const isResetPasswordModalOpen = ref(false);
+const resetPasswordForm = ref({
+  email: "",
+  newPassword: "",
+  confirmPassword: ""
+});
+
 const userForm = ref({
-  id: null, // Include ID for edit operations
+  id: null,
   fname: "",
   lname: "",
   username: "",
@@ -184,8 +174,9 @@ const userForm = ref({
   phone: "",
   role: "",
   password: "",
-  departmentId: null, // New field for department
+  departmentId: null,
 });
+
 const isModalOpen = ref(false);
 const modalTitle = ref("Add User");
 const modalButtonText = ref("Add");
@@ -193,6 +184,17 @@ const modalButtonText = ref("Add");
 // Base API URLs
 const USER_API_URL = "http://localhost:8081/api/v1/user";
 const DEPARTMENT_API_URL = "http://localhost:8081/api/v1/department";
+
+// Computed property for filtered users
+const filteredUsers = computed(() => {
+  const query = searchQuery.value.toLowerCase();
+  return users.value.filter(user =>
+    user.fname.toLowerCase().includes(query) ||
+    user.lname.toLowerCase().includes(query) ||
+    user.email.toLowerCase().includes(query) ||
+    user.username.toLowerCase().includes(query)
+  );
+});
 
 // Fetch users and departments on mount
 onMounted(() => {
@@ -206,10 +208,7 @@ const fetchUsersAndDepartments = async () => {
       axios.get(`${USER_API_URL}/getAllUsers`),
       axios.get(`${DEPARTMENT_API_URL}/getAllDepartments`),
     ]);
-
     departments.value = departmentsResponse.data;
-
-    // Map department names to users
     users.value = usersResponse.data.map((user) => {
       const department = departments.value.find(
         (dept) => dept.id === user.departmentId
@@ -219,8 +218,6 @@ const fetchUsersAndDepartments = async () => {
         departmentName: department ? department.name : "N/A",
       };
     });
-
-    console.log("Users Data:", users.value);
   } catch (error) {
     console.error("Error fetching users or departments:", error);
     alert("Failed to fetch users or departments. Please try again.");
@@ -239,7 +236,7 @@ const openAddModal = () => {
     role: "",
     password: "",
     departmentId: null,
-  }; // Reset form
+  };
   modalTitle.value = "Add User";
   modalButtonText.value = "Add";
   isModalOpen.value = true;
@@ -247,10 +244,54 @@ const openAddModal = () => {
 
 // Open Edit Modal
 const openEditModal = (user) => {
-  userForm.value = { ...user }; // Pre-fill form with user data
+  userForm.value = { ...user };
   modalTitle.value = "Edit User";
   modalButtonText.value = "Update";
   isModalOpen.value = true;
+};
+
+// Open Reset Password Modal
+const openResetPasswordModal = (user) => {
+  resetPasswordForm.value = {
+    email: user.email,
+    newPassword: "",
+    confirmPassword: ""
+  };
+  isResetPasswordModalOpen.value = true;
+};
+
+// Close Reset Password Modal
+const closeResetPasswordModal = () => {
+  isResetPasswordModalOpen.value = false;
+  resetPasswordForm.value = {
+    email: "",
+    newPassword: "",
+    confirmPassword: ""
+  };
+};
+
+// Reset Password
+const resetPassword = async () => {
+  try {
+    if (resetPasswordForm.value.newPassword !== resetPasswordForm.value.confirmPassword) {
+      alert("Passwords do not match!");
+      return;
+    }
+
+    await axios.post(`${USER_API_URL}/resetPassword`, null, {
+      params: {
+        email: resetPasswordForm.value.email,
+        newPassword: resetPasswordForm.value.newPassword
+      }
+    });
+
+    alert("Password reset successfully.");
+    closeResetPasswordModal();
+    fetchUsersAndDepartments();
+  } catch (error) {
+    console.error("Error resetting password:", error);
+    alert("Failed to reset password. Please try again.");
+  }
 };
 
 // Submit Add or Update User
@@ -260,8 +301,8 @@ const submitForm = async () => {
   } else {
     await updateUser(userForm.value.id);
   }
-  closeModal(); // Close the modal after submitting the form
-  fetchUsersAndDepartments(); // Refresh the user list
+  closeModal();
+  fetchUsersAndDepartments();
 };
 
 // Add a new user
@@ -302,24 +343,18 @@ const updateUser = async (id) => {
       password: userForm.value.password,
     };
     const departmentId = userForm.value.departmentId;
-
     if (!departmentId) {
       alert("Please select a department.");
       return;
     }
-
-    // Perform the PUT request without storing the response
     await axios.put(
       `${USER_API_URL}/updateUserById/${id}/${departmentId}`,
       updatedUser
     );
-
     alert("User updated successfully.");
-    fetchUsersAndDepartments(); // Refresh the user list after update
-
+    fetchUsersAndDepartments();
   } catch (error) {
     console.error("Error updating user:", error);
-
     if (error.response && error.response.data) {
       alert(
         `Failed to update user: ${error.response.data.message || error.message}`
@@ -329,7 +364,6 @@ const updateUser = async (id) => {
     }
   }
 };
-
 
 // Confirm before deleting a user
 const confirmDelete = (id) => {
@@ -343,7 +377,7 @@ const deleteUser = async (id) => {
   try {
     await axios.delete(`${USER_API_URL}/deleteUserById/${id}`);
     alert("User deleted successfully.");
-    fetchUsersAndDepartments(); // Refresh the user list
+    fetchUsersAndDepartments();
   } catch (error) {
     console.error("Error deleting user:", error);
     alert("Failed to delete user. Please try again.");
@@ -357,6 +391,50 @@ const closeModal = () => {
 </script>
 
 <style scoped>
+/* Container for the search bar and button */
+.user-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  /* Space between search bar and button */
+  margin-bottom: 20px;
+}
+
+/* Search Input Styles */
+.user-search {
+  width: 100%;
+  max-width: 350px;
+  /* Max width for the search input */
+  padding: 12px 16px;
+  font-size: 16px;
+  color: #2c3e50;
+  background-color: #ffffff;
+  border: 1px solid #ced6e0;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.user-search:focus {
+  border-color: #4a90e2;
+  /* Blue border on focus */
+  outline: none;
+  box-shadow: 0 0 5px rgba(74, 144, 226, 0.3);
+  /* Light blue glow effect */
+}
+
+.user-search::placeholder {
+  color: #7f8c8d;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.user-search:disabled {
+  background-color: #f2f2f2;
+  border-color: #e0e0e0;
+}
+
+
 /* Global Styles */
 .user-management {
   font-family: "Inter", "Segoe UI", Roboto, Arial, sans-serif;
@@ -573,6 +651,7 @@ const closeModal = () => {
 .fade-leave-active {
   transition: opacity 0.5s;
 }
+
 .fade-enter,
 .fade-leave-to {
   opacity: 0;
@@ -583,6 +662,7 @@ const closeModal = () => {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -622,5 +702,30 @@ const closeModal = () => {
   .user-modal-actions .user-btn-submit {
     width: 100%;
   }
+}
+
+/* Reset Button Styles */
+.user-btn-reset {
+  background-color: #27b79d;
+  color: #ffffff;
+  padding: 8px 16px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-btn-reset:hover {
+  background-color: #4bbe7f;
+  transform: translateY(-2px);
+}
+
+.user-btn-reset:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.6);
 }
 </style>
