@@ -8,7 +8,7 @@ import ExamHole from './components/admin/ExamHole.vue'
 import ExamSchedule from './components/admin/ExamSchedule.vue'
 import SemesterSchedule from './components/admin/SemesterSchedule.vue'
 import Users from './components/admin/Users.vue'
-import StudentRequest from './components/admin/StudentRequest.vue'
+import StudentRequest from './components/committee/StudentRequest.vue'
 const routes = [
   {
     path: '/',
@@ -54,17 +54,14 @@ const routes = [
         name:"SemesterSchedule",
         component: SemesterSchedule,
       },
-      {
-        path:"student-requests",
-        name: "StudentRequest",
-        component: StudentRequest
-      }
+      
     ]
   },
   {
     path: '/committee',
     name: 'Committee',
     component: Committee,
+    
   },
   
 
