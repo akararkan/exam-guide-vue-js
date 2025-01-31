@@ -75,17 +75,13 @@
               <button v-if="isAdmin" @click="openEditModal(hall)" class="btn-link">
                 Edit
               </button>
+              <!-- Add Assign Seats button -->
+              <button v-if="isAdmin" @click="assignSeatsToHall(hall.id)" class="btn-link assign" :disabled="isLoading">
+                {{ isLoading && currentAssigningHall === hall.id ? 'Assigning...' : 'Assign Seats' }}
+              </button>
               <button v-if="isAdmin" @click="confirmDeleteHall(hall.id)" class="btn-link delete">
                 Delete
               </button>
-              <div class="button-group">
-                <!-- <button v-if="isAdmin" @click="addAllUsersToHall(hall.id)" class="btn-link add-all">
-                  Add All Users
-                </button> -->
-                <button v-if="isAdmin" @click="openImportModal(hall.id)" class="btn-link import">
-                  Import Users
-                </button>
-              </div>
             </td>
           </tr>
         </tbody>
@@ -113,9 +109,9 @@
               <label>Seat Number</label>
               <input v-model="selectedSeatNumber" type="text" placeholder="e.g., A1" required />
             </div>
-            <button type="submit" class="btn btn-primary" :disabled="isLoading">
-              {{ isLoading ? "Assigning..." : "Assign User" }}
-            </button>
+            <!-- <button v-if="isAdmin" @click="assignSeatsToHall(hall.id)" class="btn-link assign" :disabled="isLoading">
+              {{ isLoading && currentAssigningHall === hall.id ? 'Assigning...' : 'Auto Assign Seats' }}
+            </button> -->
           </form>
           <p v-if="userActionMessage" :class="{ success: isUserActionSuccess, error: !isUserActionSuccess }">
             {{ userActionMessage }}
@@ -152,31 +148,6 @@
         <button @click="closeUsersModal" class="btn btn-secondary">
           Close
         </button>
-      </div>
-    </div>
-
-    <!-- Import Excel Modal -->
-    <div v-if="showImportModal" class="modal">
-      <div class="modal-content">
-        <h3>Import Users for {{ currentHallName }}</h3>
-        <div class="import-section">
-          <form @submit.prevent="importExcelData">
-            <div class="form-group">
-              <label>Select Excel File</label>
-              <input type="file" @change="handleFileUpload" accept=".xlsx,.xls" required />
-              <small>Excel file should contain columns: user_id, seat_number</small>
-            </div>
-            <button type="submit" class="btn btn-primary" :disabled="isLoading">
-              {{ isLoading ? 'Importing...' : 'Import Users' }}
-            </button>
-            <button @click="closeImportModal" type="button" class="btn btn-secondary">
-              Cancel
-            </button>
-          </form>
-          <p v-if="importMessage" :class="{ success: isImportSuccess, error: !isImportSuccess }">
-            {{ importMessage }}
-          </p>
-        </div>
       </div>
     </div>
 
@@ -281,7 +252,7 @@ export default {
       importMessage: '',
       isImportSuccess: false,
       showImportModal: false,
-
+      currentAssigningHall: null,
       // Base URL for API
       baseUrl: "http://localhost:8081/api/v1",
 
@@ -399,6 +370,47 @@ export default {
     this.loadAllExamHoles();
   },
   methods: {
+
+    async assignSeatsToHall(examHoleId) {
+      this.isLoading = true;
+      this.currentAssigningHall = examHoleId;
+
+      try {
+        const response = await axios.post(
+          `${this.baseUrl}/examhole-assignment/assign-users/${examHoleId}`
+        );
+
+        // Show success message
+        this.$toast.success('Users assigned to seats successfully!', {
+          position: 'top-right',
+          duration: 3000
+        });
+
+        // Refresh data
+        await this.loadAllExamHoles();
+
+        // If viewing users in this hall, refresh the list
+        if (this.currentHallId === examHoleId) {
+          await this.viewUsers(examHoleId);
+        }
+
+      } catch (error) {
+        const errorMessage = error.response?.data?.message ||
+          error.response?.data?.error ||
+          'Failed to assign seats';
+
+        this.$toast.error(errorMessage, {
+          position: 'top-right',
+          duration: 5000
+        });
+
+      } finally {
+        this.isLoading = false;
+        this.currentAssigningHall = null;
+      }
+    },
+
+
     // Load all exam halls
     async loadAllExamHoles() {
       this.isLoading = true;
@@ -779,72 +791,6 @@ export default {
       this.fileUpload = event.target.files[0];
     },
 
-    // Import and process Excel file
-    async importExcelData() {
-      if (!this.fileUpload) {
-        this.importMessage = 'Please select a file to import.';
-        this.isImportSuccess = false;
-        return;
-      }
-
-      // Validate file type
-      const allowedTypes = [
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-excel'
-      ];
-      if (!allowedTypes.includes(this.fileUpload.type)) {
-        this.importMessage = 'Invalid file type. Please upload an Excel file.';
-        this.isImportSuccess = false;
-        return;
-      }
-
-      // Validate file size (e.g., max 5MB)
-      const maxSize = 5 * 1024 * 1024; // 5MB
-      if (this.fileUpload.size > maxSize) {
-        this.importMessage = 'File size exceeds the maximum limit of 5MB.';
-        this.isImportSuccess = false;
-        return;
-      }
-
-      // Proceed with upload
-      this.isLoading = true;
-      const formData = new FormData();
-      formData.append('file', this.fileUpload);
-
-      try {
-        const response = await axios.post(
-          `${this.baseUrl}/examhole/importUsersFromExcel/${this.currentHallId}`,
-          formData,
-          {
-            headers: {
-              'Content-Type': 'multipart/form-data'
-            }
-          }
-        );
-
-        this.importMessage = 'Users imported and assigned successfully!';
-        this.isImportSuccess = true;
-
-        // Refresh users list
-        await this.viewUsers(this.currentHallId);
-
-        // Close modal after short delay
-        setTimeout(() => {
-          this.closeImportModal();
-        }, 1500);
-      } catch (error) {
-        console.error('Error importing users:', error);
-        // Display detailed error message from backend if available
-        if (error.response && error.response.data) {
-          this.importMessage = error.response.data;
-        } else {
-          this.importMessage = 'Failed to import users.';
-        }
-        this.isImportSuccess = false;
-      } finally {
-        this.isLoading = false;
-      }
-    },
 
 
     // Close Import Users Modal
@@ -862,6 +808,16 @@ export default {
 
 
 <style scoped>
+.btn-link.assign {
+  color: #4CAF50;
+  /* Green color for assignment */
+  border-color: #4CAF50;
+}
+
+.btn-link.assign:hover {
+  background-color: #e8f5e9;
+}
+
 .container {
   padding: 20px;
   max-width: 1200px;
