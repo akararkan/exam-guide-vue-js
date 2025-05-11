@@ -8,8 +8,36 @@
           <!-- Search Bar -->
           <input type="text" v-model="searchQuery" class="user-search" placeholder="Search users..."
             @input="filterUsers" />
+          
+          <!-- Excel Import/Export Controls -->
+          <div class="excel-controls">
+            <!-- Excel Import -->
+            <input
+              type="file"
+              id="excel-upload"
+              accept=".xlsx, .xls"
+              ref="fileInput"
+              class="excel-file-input"
+              @change="handleFileUpload"
+              style="display: none"
+            />
+            <button class="user-excel-btn" @click="triggerFileInput">
+              Import Excel
+            </button>
+            
+            <!-- Excel Export -->
+            <button class="user-excel-btn" @click="exportUsersToExcel">
+              Export Excel
+            </button>
+          </div>
+          
           <!-- Add User Button -->
           <button class="user-toggle-btn" @click="openAddModal">Add User</button>
+
+          <!-- Fourth Grade Graduation Button -->
+          <button class="user-toggle-btn graduation-btn" @click="showGraduationPanel">
+            Manage Level 4 Graduation
+          </button>
         </div>
       </div>
 
@@ -24,7 +52,7 @@
               <th>Email</th>
               <th>Phone</th>
               <th>Role</th>
-              <th>Password</th>
+              <th>Level</th> 
               <th>Department</th>
               <th>Actions</th>
             </tr>
@@ -37,7 +65,7 @@
               <td>{{ user.email }}</td>
               <td>{{ user.phone }}</td>
               <td>{{ user.role }}</td>
-              <td>{{ user.password }}</td>
+              <td>{{ getDepartmentLevel(user) }}</td>
               <td>{{ user.departmentName || "N/A" }}</td>
               <td class="user-action-cell">
                 <button class="user-btn-edit" @click="openEditModal(user)">
@@ -56,6 +84,62 @@
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Graduation Management Panel -->
+      <div v-if="isGraduationPanelOpen" class="user-form-container graduation-form-container">
+        <h3 class="graduation-title">Level 4 Graduation Management</h3>
+        
+        <div class="graduation-controls">
+          <button class="user-excel-btn select-all-btn" @click="selectAllLevelFourStudents">
+            Select All Level 4 Students
+          </button>
+          <button class="deletion-btn delete-selected-btn" @click="handleDeleteSelected">
+            Delete Selected Students
+          </button>
+          <button class="deletion-btn delete-all-btn" @click="handleDeleteAllLevel4">
+            Delete All Level 4 Students
+          </button>
+        </div>
+        
+        <div class="graduation-table-wrapper">
+          <table class="user-table graduation-table">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Student ID</th>
+                <th>Name</th>
+                <th>Department</th>
+                <th>Level</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="student in levelFourStudents" :key="student.id">
+                <td>
+                  <input 
+                    type="checkbox" 
+                    :checked="selectedStudents.includes(student.id)" 
+                    @change="toggleStudentSelection(student.id)" 
+                    class="graduation-checkbox"
+                  />
+                </td>
+                <td>{{ student.id }}</td>
+                <td>{{ student.fname }} {{ student.lname }}</td>
+                <td>{{ student.departmentName }}</td>
+                <td><span class="level-badge">{{ getDepartmentLevel(student) }}</span></td>
+              </tr>
+              <tr v-if="levelFourStudents.length === 0">
+                <td colspan="5" class="user-no-data">No level 4 students found.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="graduation-panel-actions">
+          <button type="button" class="user-btn-cancel" @click="closeGraduationPanel">
+            Close
+          </button>
+        </div>
       </div>
 
       <!-- Password Reset Modal -->
@@ -122,12 +206,13 @@
               <option value="COMMITTEE">Committee</option>
             </select>
           </div>
+          
           <div class="user-form-group">
             <label for="department">Department</label>
             <select v-model="userForm.departmentId" id="department" class="user-form-control" required>
               <option value="" disabled>Select Department</option>
               <option v-for="dept in departments" :key="dept.id" :value="dept.id">
-                {{ dept.name }}
+                {{ dept.name }} (Level: {{ dept.level || 'N/A' }})
               </option>
             </select>
           </div>
@@ -165,6 +250,10 @@ const resetPasswordForm = ref({
   confirmPassword: ""
 });
 
+// Graduation-related state
+const isGraduationPanelOpen = ref(false);
+const selectedStudents = ref([]);
+
 const userForm = ref({
   id: null,
   fname: "",
@@ -180,6 +269,7 @@ const userForm = ref({
 const isModalOpen = ref(false);
 const modalTitle = ref("Add User");
 const modalButtonText = ref("Add");
+const fileInput = ref(null); // Reference to file input element
 
 // Base API URLs
 const USER_API_URL = "http://localhost:8081/api/v1/user";
@@ -194,6 +284,21 @@ const filteredUsers = computed(() => {
     user.email.toLowerCase().includes(query) ||
     user.username.toLowerCase().includes(query)
   );
+});
+
+// Helper function to get department level for a user
+const getDepartmentLevel = (user) => {
+  if (!user.departmentId) return 'N/A';
+  const department = departments.value.find(dept => dept.id === user.departmentId);
+  return department && department.level !== undefined ? department.level : 'N/A';
+};
+
+// Computed property for level 4 students
+const levelFourStudents = computed(() => {
+  return users.value.filter(user => {
+    const level = getDepartmentLevel(user);
+    return user.role === 'STUDENT' && level == 4; // Using loose equality for comparison
+  });
 });
 
 // Fetch users and departments on mount
@@ -215,7 +320,7 @@ const fetchUsersAndDepartments = async () => {
       );
       return {
         ...user,
-        departmentName: department ? department.name : "N/A",
+        departmentName: department ? department.name : "N/A"
       };
     });
   } catch (error) {
@@ -236,6 +341,7 @@ const openAddModal = () => {
     role: "",
     password: "",
     departmentId: null,
+    graduated: false,
   };
   modalTitle.value = "Add User";
   modalButtonText.value = "Add";
@@ -316,6 +422,7 @@ const addUser = async () => {
       phone: userForm.value.phone,
       role: userForm.value.role,
       password: userForm.value.password,
+      graduated: userForm.value.role === 'STUDENT' ? userForm.value.graduated : false,
     };
     const departmentId = userForm.value.departmentId;
     if (!departmentId) {
@@ -341,6 +448,7 @@ const updateUser = async (id) => {
       phone: userForm.value.phone,
       role: userForm.value.role,
       password: userForm.value.password,
+      graduated: userForm.value.role === 'STUDENT' ? userForm.value.graduated : false,
     };
     const departmentId = userForm.value.departmentId;
     if (!departmentId) {
@@ -367,20 +475,50 @@ const updateUser = async (id) => {
 
 // Confirm before deleting a user
 const confirmDelete = (id) => {
-  if (window.confirm("Are you sure you want to delete this user?")) {
+  console.log("Confirm delete called for ID:", id);
+  if (window.confirm("Are you sure you want to delete this user? Click OK to delete or Cancel to abort.")) {
+    console.log("User confirmed deletion for ID:", id);
     deleteUser(id);
+  } else {
+    console.log("User cancelled deletion");
   }
 };
 
 // Delete a user by ID
 const deleteUser = async (id) => {
+  console.log("Delete user function called with ID:", id);
   try {
-    await axios.delete(`${USER_API_URL}/deleteUserById/${id}`);
+    // Ensure the ID is correctly formatted
+    const userId = Number(id);
+    if (isNaN(userId)) {
+      console.error("Invalid user ID:", id);
+      alert("Failed to delete user: Invalid ID");
+      return;
+    }
+    
+    console.log("Sending DELETE request to:", `${USER_API_URL}/deleteUserById/${userId}`);
+    
+    // Make the delete request with detailed error handling
+    const response = await axios.delete(`${USER_API_URL}/deleteUserById/${userId}`);
+    console.log("Delete response:", response);
+    
     alert("User deleted successfully.");
-    fetchUsersAndDepartments();
+    await fetchUsersAndDepartments();
   } catch (error) {
     console.error("Error deleting user:", error);
-    alert("Failed to delete user. Please try again.");
+    
+    // Provide more detailed error information to help debugging
+    if (error.response) {
+      console.error("Response status:", error.response.status);
+      console.error("Response data:", error.response.data);
+      alert(`Failed to delete user. Server responded with: ${error.response.status} ${error.response.statusText}`);
+    } else if (error.request) {
+      console.error("No response received. Request:", error.request);
+      alert("Failed to delete user. No response received from server.");
+    } else {
+      console.error("Error message:", error.message);
+      alert(`Failed to delete user: ${error.message}`);
+    }
   }
 };
 
@@ -388,7 +526,156 @@ const deleteUser = async (id) => {
 const closeModal = () => {
   isModalOpen.value = false;
 };
+
+// Excel Export Function
+const exportUsersToExcel = async () => {
+  try {
+    const response = await axios.get(`${USER_API_URL}/exportUsers`, {
+      responseType: 'blob'
+    });
+    
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'users.xlsx');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (error) {
+    console.error("Error exporting users:", error);
+    alert("Failed to export users to Excel. Please try again.");
+  }
+};
+
+// Trigger file input click
+const triggerFileInput = () => {
+  fileInput.value.click();
+};
+
+// Handle file selection for Excel import
+const handleFileUpload = async (event) => {
+  try {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    await axios.post(`${USER_API_URL}/importUsers`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    
+    alert("Users imported successfully!");
+    fetchUsersAndDepartments();
+    
+    // Reset file input
+    event.target.value = null;
+  } catch (error) {
+    console.error("Error importing users:", error);
+    alert("Failed to import users from Excel. Please check your file format and try again.");
+  }
+};
+
+// Graduation Management Functions
+
+// Filter users function
+const filterUsers = () => {
+  // This function is needed to handle the @input event on the search bar
+  // The filtering is done by the computed property filteredUsers
+};
+
+// Show graduation panel
+const showGraduationPanel = () => {
+  isGraduationPanelOpen.value = true;
+  selectedStudents.value = []; // Reset selected students
+};
+
+// Close graduation panel
+const closeGraduationPanel = () => {
+  isGraduationPanelOpen.value = false;
+  selectedStudents.value = []; // Clear selections
+};
+
+// Toggle selection of a student
+const toggleStudentSelection = (studentId) => {
+  const index = selectedStudents.value.indexOf(studentId);
+  if (index === -1) {
+    selectedStudents.value.push(studentId);
+  } else {
+    selectedStudents.value.splice(index, 1);
+  }
+};
+
+// Select all level 4 students
+const selectAllLevelFourStudents = () => {
+  selectedStudents.value = levelFourStudents.value.map(student => student.id);
+};
+
+// Handler functions to ensure we catch any errors
+const handleDeleteSelected = () => {
+  console.log("Handle delete selected called");
+  try {
+    deleteSelectedStudents();
+  } catch (error) {
+    console.error("Error in handleDeleteSelected:", error);
+    alert("An error occurred while trying to delete selected students. See console for details.");
+  }
+};
+
+const handleDeleteAllLevel4 = () => {
+  console.log("Handle delete all level 4 called");
+  try {
+    deleteAllLevelFourStudents();
+  } catch (error) {
+    console.error("Error in handleDeleteAllLevel4:", error);
+    alert("An error occurred while trying to delete all level 4 students. See console for details.");
+  }
+};
+
+// Delete selected students
+const deleteSelectedStudents = () => {
+  console.log("Delete selected students function called");
+  if (selectedStudents.value.length === 0) {
+    alert("Please select at least one student to delete.");
+    return;
+  }
+
+  if (window.confirm(`Are you sure you want to delete ${selectedStudents.value.length} selected student(s)?`)) {
+    console.log("Deleting selected students:", selectedStudents.value);
+    // Process one by one
+    selectedStudents.value.forEach(studentId => {
+      console.log("Processing deletion for student ID:", studentId);
+      deleteUser(studentId);
+    });
+    
+    // Clear selections after deletion
+    selectedStudents.value = [];
+  }
+};
+
+// Delete all level 4 students (graduation)
+const deleteAllLevelFourStudents = () => {
+  console.log("Delete all level 4 students function called");
+  const levelFourCount = levelFourStudents.value.length;
+  
+  if (levelFourCount === 0) {
+    alert("There are no level 4 students to delete.");
+    return;
+  }
+  
+  if (window.confirm(`Are you sure you want to delete ALL ${levelFourCount} level 4 student(s)? This action cannot be undone!`)) {
+    console.log("Confirmed deletion of all level 4 students");
+    // Use the same approach as the regular delete button
+    levelFourStudents.value.forEach(student => {
+      console.log("Processing deletion for level 4 student ID:", student.id);
+      deleteUser(student.id);
+    });
+  }
+};
 </script>
+
 
 <style scoped>
 /* Container for the search bar and button */
@@ -486,6 +773,14 @@ const closeModal = () => {
 .user-toggle-btn:hover {
   background-color: #357ab8;
   transform: translateY(-2px);
+}
+
+.graduation-btn {
+  background-color: #9b59b6;
+}
+
+.graduation-btn:hover {
+  background-color: #8e44ad;
 }
 
 /* Table Styles */
@@ -727,5 +1022,135 @@ const closeModal = () => {
 .user-btn-reset:focus {
   outline: none;
   box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.6);
+}
+/* Add these styles to your existing CSS */
+.excel-controls {
+  display: flex;
+  gap: 10px;
+  margin-right: 10px;
+}
+
+.user-excel-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.user-excel-btn:hover {
+  background-color: #218838;
+}
+
+.user-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.excel-file-input {
+  display: none;
+}
+
+/* Graduation Panel Styles - Enhanced */
+.graduation-form-container {
+  background-color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  margin-top: 20px;
+}
+
+.graduation-title {
+  color: #3498db;
+  font-size: 24px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #f0f0f0;
+  padding-bottom: 15px;
+}
+
+.graduation-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 25px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+}
+
+.select-all-btn {
+  background-color: #3498db;
+  color: white;
+}
+
+.select-all-btn:hover {
+  background-color: #2980b9;
+}
+
+.deletion-btn {
+  background-color: #e74c3c;
+  color: white;
+  font-weight: 500;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.deletion-btn:hover {
+  background-color: #c0392b;
+  transform: translateY(-2px);
+}
+
+.deletion-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
+}
+
+.delete-selected-btn, .delete-all-btn {
+  font-weight: 500;
+}
+
+.graduation-table-wrapper {
+  margin-bottom: 25px;
+  overflow-x: auto;
+}
+
+.graduation-table {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.graduation-table th {
+  background-color: #34495e;
+  color: white;
+  font-weight: 600;
+}
+
+.graduation-checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.level-badge {
+  background-color: #8e44ad;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.graduation-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
 }
 </style>

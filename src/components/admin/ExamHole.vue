@@ -75,9 +75,9 @@
               <button v-if="isAdmin" @click="openEditModal(hall)" class="btn-link">
                 Edit
               </button>
-              <!-- Add Assign Seats button -->
-              <button v-if="isAdmin" @click="assignSeatsToHall(hall.id)" class="btn-link assign" :disabled="isLoading">
-                {{ isLoading && currentAssigningHall === hall.id ? 'Assigning...' : 'Assign Seats' }}
+              <!-- Updated Assign Seats button to open modal -->
+              <button v-if="isAdmin" @click="openAssignSeatsModal(hall.id)" class="btn-link assign">
+                Assign Seats
               </button>
               <button v-if="isAdmin" @click="confirmDeleteHall(hall.id)" class="btn-link delete">
                 Delete
@@ -92,26 +92,52 @@
     <div v-if="showUsersModal" class="modal">
       <div class="modal-content">
         <h3>Users in Hall: {{ currentHallName }}</h3>
+        <div class="modal-header-actions">
+          <button @click="printExamHallUsers(currentHallId)" class="btn btn-print">
+            <i class="fas fa-print"></i> Print Hall Information
+          </button>
+        </div>
         <!-- Add User Form -->
         <div v-if="isAdmin" class="add-user-section">
           <h4>Add User to Hall</h4>
           <form @submit.prevent="assignUserToHall">
             <div class="form-group">
               <label>Select User</label>
-              <select v-model="selectedUserId" required>
+              <select 
+                v-model="selectedUserId" 
+                @change="onUserSelectionChange" 
+                required
+              >
                 <option disabled value="">Please select a user</option>
                 <option v-for="user in availableUsers" :key="user.id" :value="user.id">
-                  {{ user.fname }} {{ user.lname }} ({{ user.email }})
+                  {{ user.fname }} {{ user.lname }} ({{ user.email }}) 
+                  <span v-if="user.role">[{{ user.role }}]</span>
                 </option>
               </select>
             </div>
             <div class="form-group">
               <label>Seat Number</label>
-              <input v-model="selectedSeatNumber" type="text" placeholder="e.g., A1" required />
+              <input 
+                v-if="!isTeacherSelected" 
+                v-model="selectedSeatNumber" 
+                type="text" 
+                placeholder="e.g., A1" 
+                required 
+              />
+              <input 
+                v-else 
+                v-model="selectedSeatNumber" 
+                type="text" 
+                readonly 
+                class="teacher-seat-input"
+              />
+              <small v-if="isTeacherSelected" class="teacher-note">
+                Teachers are automatically assigned to "Teacher Stage"
+              </small>
             </div>
-            <!-- <button v-if="isAdmin" @click="assignSeatsToHall(hall.id)" class="btn-link assign" :disabled="isLoading">
-              {{ isLoading && currentAssigningHall === hall.id ? 'Assigning...' : 'Auto Assign Seats' }}
-            </button> -->
+            <button type="submit" class="btn btn-primary" :disabled="isLoading">
+              Assign User
+            </button>
           </form>
           <p v-if="userActionMessage" :class="{ success: isUserActionSuccess, error: !isUserActionSuccess }">
             {{ userActionMessage }}
@@ -124,7 +150,8 @@
               <tr>
                 <th>Name</th>
                 <th>Email</th>
-                <th>Seat Number</th>
+                <th>Role</th>
+                <th>Seat</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -132,7 +159,18 @@
               <tr v-for="user in usersInHall" :key="user.userId">
                 <td>{{ user.fname }} {{ user.lname }}</td>
                 <td>{{ user.email }}</td>
-                <td>{{ user.seatNumber }}</td>
+                <td>{{ user.role || 'STUDENT' }}</td>
+                <td>
+                  <span 
+                    v-if="user.seatNumber === 'Teacher Stage'" 
+                    class="teacher-stage"
+                  >
+                    Teacher Stage
+                  </span>
+                  <span v-else>
+                    {{ user.seatNumber }}
+                  </span>
+                </td>
                 <td>
                   <button @click="openEditUserModal(user)" class="btn-link">
                     Edit
@@ -154,11 +192,31 @@
     <!-- Edit User Modal -->
     <div v-if="showEditUserModal" class="modal">
       <div class="modal-content">
-        <h3>Edit User's Seat Number</h3>
+        <h3>Edit User's Seat Assignment</h3>
         <form @submit.prevent="editUserSeat">
           <div class="form-group">
+            <label>User</label>
+            <p><strong>{{ editUser.fname }} {{ editUser.lname }}</strong> <span v-if="editUser.role">({{ editUser.role }})</span></p>
+          </div>
+          <div class="form-group" v-if="editUser && editUser.role === 'TEACHER'">
+            <label>Seat Assignment</label>
+            <input 
+              v-model="newSeatNumber" 
+              type="text" 
+              value="Teacher Stage" 
+              readonly 
+              class="teacher-seat-input" 
+            />
+            <small class="teacher-note">Teachers are assigned to "Teacher Stage"</small>
+          </div>
+          <div class="form-group" v-else>
             <label>Seat Number</label>
-            <input v-model="newSeatNumber" type="text" placeholder="e.g., B2" required />
+            <input 
+              v-model="newSeatNumber" 
+              type="text" 
+              placeholder="e.g., B2" 
+              required 
+            />
           </div>
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             {{ isLoading ? "Updating..." : "Update Seat" }}
@@ -225,6 +283,131 @@
       </div>
     </div>
 
+    <!-- Assign Seats Modal -->
+    <div v-if="showAssignSeatsModal" class="modal">
+      <div class="modal-content">
+        <h3>Assign Seats - {{ currentHallName }}</h3>
+        <div class="assign-seats-container">
+          <div class="department-selection">
+            <h4>Select Departments</h4>
+            <div class="departments-grid">
+              <!-- Level 1 Departments -->
+              <div class="level-section">
+                <h5>Level 1</h5>
+                <div v-for="dept in departmentsByLevel[1]" :key="dept.id" class="dept-checkbox">
+                  <input 
+                    type="checkbox" 
+                    :id="'dept-' + dept.id" 
+                    :value="dept.name" 
+                    v-model="selectedDepartments"
+                  />
+                  <label :for="'dept-' + dept.id">{{ dept.name }}</label>
+                </div>
+              </div>
+              
+              <!-- Level 2 Departments -->
+              <div class="level-section">
+                <h5>Level 2</h5>
+                <div v-for="dept in departmentsByLevel[2]" :key="dept.id" class="dept-checkbox">
+                  <input 
+                    type="checkbox" 
+                    :id="'dept-' + dept.id" 
+                    :value="dept.name" 
+                    v-model="selectedDepartments"
+                  />
+                  <label :for="'dept-' + dept.id">{{ dept.name }}</label>
+                </div>
+              </div>
+              
+              <!-- Level 3 Departments -->
+              <div class="level-section">
+                <h5>Level 3</h5>
+                <div v-for="dept in departmentsByLevel[3]" :key="dept.id" class="dept-checkbox">
+                  <input 
+                    type="checkbox" 
+                    :id="'dept-' + dept.id" 
+                    :value="dept.name" 
+                    v-model="selectedDepartments"
+                  />
+                  <label :for="'dept-' + dept.id">{{ dept.name }}</label>
+                </div>
+              </div>
+              
+              <!-- Level 4 Departments -->
+              <div class="level-section">
+                <h5>Level 4</h5>
+                <div v-for="dept in departmentsByLevel[4]" :key="dept.id" class="dept-checkbox">
+                  <input 
+                    type="checkbox" 
+                    :id="'dept-' + dept.id" 
+                    :value="dept.name" 
+                    v-model="selectedDepartments"
+                  />
+                  <label :for="'dept-' + dept.id">{{ dept.name }}</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Level Grouping Configuration -->
+          <div class="level-grouping">
+            <h4>Level Grouping</h4>
+            <div class="grouping-config">
+              <div>
+                <h5>Group 1 (A, D, I, L columns)</h5>
+                <div class="group-selection">
+                  <div v-for="level in [1, 2, 3, 4]" :key="`level1-${level}`" class="level-checkbox">
+                    <input 
+                      type="checkbox" 
+                      :id="`group1-level-${level}`" 
+                      :value="level" 
+                      v-model="firstLevelGroup"
+                    />
+                    <label :for="`group1-level-${level}`">Level {{ level }}</label>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h5>Group 2 (C, G, J columns)</h5>
+                <div class="group-selection">
+                  <div v-for="level in [1, 2, 3, 4]" :key="`level2-${level}`" class="level-checkbox">
+                    <input 
+                      type="checkbox" 
+                      :id="`group2-level-${level}`" 
+                      :value="level" 
+                      v-model="secondLevelGroup"
+                    />
+                    <label :for="`group2-level-${level}`">Level {{ level }}</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="selected-departments-summary">
+          <h4>Selection Summary</h4>
+          <p><strong>Selected Departments:</strong> {{ selectedDepartments.length }}</p>
+          <p><strong>Group 1 (A, D, I, L):</strong> {{ firstLevelGroup.join(', ') || 'None' }} </p>
+          <p><strong>Group 2 (C, G, J):</strong> {{ secondLevelGroup.join(', ') || 'None' }} </p>
+        </div>
+        
+        <div class="assign-seats-actions">
+          <button @click="assignSeatsToHall" class="btn btn-primary" :disabled="isLoading || selectedDepartments.length === 0 || firstLevelGroup.length === 0 || secondLevelGroup.length === 0">
+            {{ isLoading ? "Assigning..." : "Assign Seats" }}
+          </button>
+          <button @click="closeAssignSeatsModal" class="btn btn-secondary">
+            Cancel
+          </button>
+        </div>
+        
+        <p v-if="assignMessage" :class="{ success: isAssignSuccess, error: !isAssignSuccess }">
+          {{ assignMessage }}
+        </p>
+      </div>
+    </div>
+
     <!-- Add All Users Confirmation Modal -->
     <div v-if="showAddAllConfirm" class="modal">
       <div class="modal-content">
@@ -238,8 +421,15 @@
         </button>
       </div>
     </div>
+
+    <!-- Notification div to replace toast -->
+    <div v-if="showNotification" class="notification" :class="notificationType">
+      {{ notificationMessage }}
+      <span class="close-notification" @click="closeNotification">&times;</span>
+    </div>
   </div>
 </template>
+
 <script>
 import axios from "axios";
 
@@ -253,6 +443,7 @@ export default {
       isImportSuccess: false,
       showImportModal: false,
       currentAssigningHall: null,
+      
       // Base URL for API
       baseUrl: "http://localhost:8081/api/v1",
 
@@ -271,6 +462,13 @@ export default {
       showEditModal: false,
       showDeleteConfirm: false,
       showAddAllConfirm: false,
+      showAssignSeatsModal: false,
+      
+      // Custom notification instead of toast
+      showNotification: false,
+      notificationMessage: '',
+      notificationType: 'success',
+      notificationTimeout: null,
 
       // Current Exam Hall Info
       currentHallId: null,
@@ -301,6 +499,10 @@ export default {
       // Assign User to Hall Data
       selectedUserId: "",
       selectedSeatNumber: "",
+      
+      // Teacher detection properties
+      selectedUserRole: null,
+      isTeacherSelected: false,
 
       // Edit User Seat Data
       editUser: null,
@@ -317,12 +519,26 @@ export default {
       isEditUserSuccess: false,
       importMessage: '',
       isImportSuccess: false,
+      assignMessage: "",
+      isAssignSuccess: false,
 
       // Deletion Data
       deleteHallId: null,
 
       // Loading State
       isLoading: false,
+      
+      // Department data for seat assignment
+      departments: [],
+      departmentsByLevel: {
+        1: [],
+        2: [],
+        3: [],
+        4: []
+      },
+      selectedDepartments: [],
+      firstLevelGroup: [1, 3], // Default: Levels 1 & 3 together
+      secondLevelGroup: [2, 4], // Default: Levels 2 & 4 together
     };
   },
   computed: {
@@ -368,48 +584,183 @@ export default {
   },
   created() {
     this.loadAllExamHoles();
+    this.loadAllDepartments();
   },
   methods: {
-
-    async assignSeatsToHall(examHoleId) {
-      this.isLoading = true;
-      this.currentAssigningHall = examHoleId;
-
-      try {
-        const response = await axios.post(
-          `${this.baseUrl}/examhole-assignment/assign-users/${examHoleId}`
-        );
-
-        // Show success message
-        this.$toast.success('Users assigned to seats successfully!', {
-          position: 'top-right',
-          duration: 3000
-        });
-
-        // Refresh data
-        await this.loadAllExamHoles();
-
-        // If viewing users in this hall, refresh the list
-        if (this.currentHallId === examHoleId) {
-          await this.viewUsers(examHoleId);
+    // Custom notification method to replace toast
+    showToast(message, type = 'success', duration = 3000) {
+      // Clear any existing notification timeout
+      if (this.notificationTimeout) {
+        clearTimeout(this.notificationTimeout);
+      }
+      
+      // Set notification properties
+      this.notificationMessage = message;
+      this.notificationType = type;
+      this.showNotification = true;
+      
+      // Auto-hide after duration
+      this.notificationTimeout = setTimeout(() => {
+        this.closeNotification();
+      }, duration);
+    },
+    
+    closeNotification() {
+      this.showNotification = false;
+    },
+    
+    // Method to handle user selection change
+    onUserSelectionChange() {
+      if (!this.selectedUserId) {
+        this.isTeacherSelected = false;
+        this.selectedUserRole = null;
+        return;
+      }
+      
+      // Find the selected user
+      const selectedUser = this.availableUsers.find(user => user.id === this.selectedUserId);
+      
+      if (selectedUser) {
+        this.selectedUserRole = selectedUser.role;
+        // Check if the selected user is a teacher
+        this.isTeacherSelected = selectedUser.role === 'TEACHER';
+        
+        // If teacher is selected, automatically set seat to "Teacher Stage"
+        if (this.isTeacherSelected) {
+          this.selectedSeatNumber = "Teacher Stage";
+        } else {
+          // Reset seat number if it was previously set to Teacher Stage
+          if (this.selectedSeatNumber === "Teacher Stage") {
+            this.selectedSeatNumber = "";
+          }
         }
-
-      } catch (error) {
-        const errorMessage = error.response?.data?.message ||
-          error.response?.data?.error ||
-          'Failed to assign seats';
-
-        this.$toast.error(errorMessage, {
-          position: 'top-right',
-          duration: 5000
-        });
-
-      } finally {
-        this.isLoading = false;
-        this.currentAssigningHall = null;
       }
     },
-
+    
+    // Load all departments for seat assignment
+    async loadAllDepartments() {
+      try {
+        const response = await axios.get(`${this.baseUrl}/department/getAllDepartments`);
+        this.departments = response.data;
+        
+        // Reset department levels
+        this.departmentsByLevel = {
+          1: [],
+          2: [],
+          3: [],
+          4: []
+        };
+        
+        // Group departments by level
+        this.departments.forEach(dept => {
+          const level = this.extractLevelFromDepartment(dept.name);
+          if (level >= 1 && level <= 4) {
+            this.departmentsByLevel[level].push(dept);
+          }
+        });
+      } catch (error) {
+        console.error("Error loading departments:", error);
+        this.showToast("Failed to load departments", "error");
+      }
+    },
+    
+    // Helper to extract level from department name
+    extractLevelFromDepartment(name) {
+      const match = name.match(/\b(\d+)\b/);
+      return match ? parseInt(match[1]) : 0;
+    },
+    
+    // Open the assign seats modal
+    openAssignSeatsModal(hallId) {
+      this.currentHallId = hallId;
+      const hall = this.examHoles.find(h => h.id === hallId);
+      if (hall) {
+        this.currentHallName = hall.holeName;
+      }
+      
+      // Reset selection state
+      this.selectedDepartments = [];
+      this.firstLevelGroup = [1, 3]; // Default to levels 1 & 3
+      this.secondLevelGroup = [2, 4]; // Default to levels 2 & 4
+      this.assignMessage = "";
+      this.isAssignSuccess = false;
+      
+      this.showAssignSeatsModal = true;
+    },
+    
+    // Close the assign seats modal
+    closeAssignSeatsModal() {
+      this.showAssignSeatsModal = false;
+      this.selectedDepartments = [];
+      this.assignMessage = "";
+    },
+    
+    // Method to assign seats to hall using the new dynamic functionality
+    async assignSeatsToHall() {
+      if (this.selectedDepartments.length === 0) {
+        this.assignMessage = "Please select at least one department.";
+        this.isAssignSuccess = false;
+        return;
+      }
+      
+      if (this.firstLevelGroup.length === 0 || this.secondLevelGroup.length === 0) {
+        this.assignMessage = "Please select at least one level for each group.";
+        this.isAssignSuccess = false;
+        return;
+      }
+      
+      // Check for overlapping levels between groups
+      const overlappingLevels = this.firstLevelGroup.filter(level => 
+        this.secondLevelGroup.includes(level)
+      );
+      
+      if (overlappingLevels.length > 0) {
+        this.assignMessage = `Levels ${overlappingLevels.join(', ')} cannot be in both groups.`;
+        this.isAssignSuccess = false;
+        return;
+      }
+      
+      this.isLoading = true;
+      
+      try {
+        // Make API call to assign seats with selected departments and level groups
+        const response = await axios.post(
+          `${this.baseUrl}/examhole-assignment/assign-seats-custom/${this.currentHallId}`,
+          {
+            departments: this.selectedDepartments,
+            firstLevelGroup: this.firstLevelGroup,
+            secondLevelGroup: this.secondLevelGroup
+          }
+        );
+        
+        this.assignMessage = "Seats assigned successfully!";
+        this.isAssignSuccess = true;
+        
+        // Show success notification
+        this.showToast('Users assigned to seats successfully!', 'success');
+        
+        // Refresh the exam halls list
+        await this.loadAllExamHoles();
+        
+        // Close modal after a short delay
+        setTimeout(() => {
+          this.closeAssignSeatsModal();
+        }, 1500);
+        
+      } catch (error) {
+        const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          'Failed to assign seats';
+        
+        this.assignMessage = errorMessage;
+        this.isAssignSuccess = false;
+        
+        this.showToast(errorMessage, 'error', 5000);
+        
+      } finally {
+        this.isLoading = false;
+      }
+    },
 
     // Load all exam halls
     async loadAllExamHoles() {
@@ -424,6 +775,7 @@ export default {
         console.error("Error loading exam halls:", error);
         this.examHoleMessage = "Failed to load exam halls.";
         this.isExamHoleSuccess = false;
+        this.showToast("Failed to load exam halls", "error");
       } finally {
         this.isLoading = false;
       }
@@ -442,6 +794,7 @@ export default {
         console.error("Error loading available exam halls:", error);
         this.examHoleMessage = "Failed to load available exam halls.";
         this.isExamHoleSuccess = false;
+        this.showToast("Failed to load available exam halls", "error");
       } finally {
         this.isLoading = false;
       }
@@ -457,6 +810,7 @@ export default {
         );
         this.examHoleMessage = "Exam hall added successfully!";
         this.isExamHoleSuccess = true;
+        this.showToast("Exam hall added successfully!", "success");
         await this.loadAllExamHoles();
         // Reset form
         this.newExamHole = {
@@ -470,6 +824,7 @@ export default {
         console.error("Error adding exam hall:", error);
         this.examHoleMessage = "Failed to add exam hall.";
         this.isExamHoleSuccess = false;
+        this.showToast("Failed to add exam hall", "error");
       } finally {
         this.isLoading = false;
       }
@@ -491,11 +846,13 @@ export default {
         );
         this.examHoleMessage = "Exam hall deleted successfully!";
         this.isExamHoleSuccess = true;
+        this.showToast("Exam hall deleted successfully!", "success");
         await this.loadAllExamHoles();
       } catch (error) {
         console.error("Error deleting exam hall:", error);
         this.examHoleMessage = "Failed to delete exam hall.";
         this.isExamHoleSuccess = false;
+        this.showToast("Failed to delete exam hall", "error");
       } finally {
         this.isLoading = false;
         this.showDeleteConfirm = false;
@@ -517,27 +874,50 @@ export default {
         if (!hall) throw new Error("Hall not found.");
         this.currentHallId = hallId;
         this.currentHallName = hall.holeName;
+        
+        // Get users in the exam hall
         const response = await axios.get(
           `${this.baseUrl}/examhole/getUsersInExamHole/${hallId}/users`
         );
-        this.usersInHall = response.data; // Should contain userId, fname, lname, email, seatNumber
+        this.usersInHall = response.data; // Should contain userId, fname, lname, email, seatNumber, role
+        
+        // Count teachers already assigned to "Teacher Stage"
+        const teachersAssigned = this.usersInHall.filter(
+          user => user.role === 'TEACHER' && user.seatNumber === 'Teacher Stage'
+        ).length;
+        
         this.showUsersModal = true;
+        
         // Load available users to add (excluding those already in the hall)
         const allUsersResponse = await axios.get(
           `${this.baseUrl}/user/getAllUsers`
         );
+        
         const usersInHallIds = this.usersInHall.map((user) => user.userId);
-        this.availableUsers = allUsersResponse.data.filter(
+        
+        // Filter available users
+        // If we already have 2 teachers assigned, don't show more teachers as available
+        let availableUsers = allUsersResponse.data.filter(
           (user) => !usersInHallIds.includes(user.id)
         );
+        
+        if (teachersAssigned >= 2) {
+          availableUsers = availableUsers.filter(user => user.role !== 'TEACHER');
+        }
+        
+        this.availableUsers = availableUsers;
+        
         this.userActionMessage = "";
         this.isUserActionSuccess = false;
         this.selectedUserId = "";
-        this.selectedSeatNumber = ""; // Reset seat number input
+        this.selectedSeatNumber = "";
+        this.isTeacherSelected = false;
+        this.selectedUserRole = null;
       } catch (error) {
         console.error("Error loading users:", error);
         this.userActionMessage = "Failed to load users.";
         this.isUserActionSuccess = false;
+        this.showToast("Failed to load users", "error");
       } finally {
         this.isLoading = false;
       }
@@ -554,8 +934,159 @@ export default {
       this.isUserActionSuccess = false;
       this.currentHallId = null;
       this.currentHallName = "";
+      this.isTeacherSelected = false;
+      this.selectedUserRole = null;
     },
 
+    // Print exam hall with users
+    printExamHallUsers(hallId) {
+      this.isLoading = true;
+
+      // Find hall data
+      const hall = this.examHoles.find((h) => h.id === hallId);
+      if (!hall) {
+        console.error("Hall not found");
+        this.isLoading = false;
+        return;
+      }
+
+      // Fetch users in this hall
+      axios.get(`${this.baseUrl}/examhole/getUsersInExamHole/${hallId}/users`)
+        .then(response => {
+          const usersData = response.data;
+
+          // Create print window
+          const printWindow = window.open('', '_blank');
+
+          // Prepare content for printing
+          const printContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Exam Hall - ${hall.holeName}</title>
+              <style>
+                body {
+                  font-family: Arial, sans-serif;
+                  margin: 20px;
+                }
+                h1 {
+                  text-align: center;
+                  margin-bottom: 5px;
+                }
+                h2 {
+                  text-align: center;
+                  margin-top: 0;
+                  margin-bottom: 20px;
+                  font-size: 16px;
+                  font-weight: normal;
+                }
+                .hall-info {
+                  border: 1px solid #333;
+                  padding: 15px;
+                  margin-bottom: 20px;
+                  background-color: #f9f9f9;
+                }
+                .hall-info p {
+                  margin: 5px 0;
+                }
+                table {
+                  width: 100%;
+                  border-collapse: collapse;
+                }
+                th, td {
+                  border: 1px solid #333;
+                  padding: 8px;
+                  text-align: left;
+                }
+                th {
+                  background-color: #f2f2f2;
+                }
+                .teacher-stage {
+                  background-color: #e2f0d9;
+                  font-weight: bold;
+                  padding: 3px 8px;
+                  border-radius: 4px;
+                }
+                .footer {
+                  margin-top: 30px;
+                  text-align: center;
+                  font-size: 12px;
+                }
+                @media print {
+                  .no-print {
+                    display: none;
+                  }
+                  @page {
+                    margin: 1.5cm;
+                  }
+                }
+              </style>
+            </head>
+            <body>
+              <h1>Exam Hall: ${hall.holeName}</h1>
+              <h2>Seating Arrangement</h2>
+              
+              <div class="hall-info">
+                <p><strong>Hall Number:</strong> ${hall.number}</p>
+                <p><strong>Capacity:</strong> ${hall.capacity} seats</p>
+                <p><strong>Layout:</strong> ${hall.row} rows × ${hall.col} columns</p>
+                <p><strong>Date Printed:</strong> ${new Date().toLocaleString()}</p>
+              </div>
+              
+              <h3>Assigned Users</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Seat</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${usersData.map(user => `
+                    <tr>
+                      <td>${user.fname} ${user.lname}</td>
+                      <td>${user.email}</td>
+                      <td>${user.role || 'STUDENT'}</td>
+                      <td>${user.seatNumber === 'Teacher Stage' 
+                          ? '<span class="teacher-stage">Teacher Stage</span>' 
+                          : user.seatNumber}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              
+              <div class="footer">
+                <p>Total Users: ${usersData.length} / ${hall.capacity}</p>
+                <p>Available Seats: ${hall.capacity - usersData.length}</p>
+              </div>
+              
+              <div class="no-print" style="margin-top: 20px; text-align: center;">
+                <button onclick="window.print();" style="padding: 10px 20px; cursor: pointer;">Print this page</button>
+                <button onclick="window.close();" style="padding: 10px 20px; margin-left: 10px; cursor: pointer;">Close</button>
+              </div>
+            </body>
+            </html>
+          `;
+
+          // Write to the new window and trigger print
+          printWindow.document.open();
+          printWindow.document.write(printContent);
+          printWindow.document.close();
+
+          // Remove loading state when window is fully loaded
+          printWindow.onload = () => {
+            this.isLoading = false;
+          };
+
+        })
+        .catch(error => {
+          console.error("Error fetching users for printing:", error);
+          this.isLoading = false;
+          this.showToast("Error fetching users for printing", "error");
+        });
+    },
 
     // Remove user from hall
     async removeUserFromHall(hallId, userId) {
@@ -569,6 +1100,7 @@ export default {
         );
         this.userActionMessage = "User removed from hall successfully.";
         this.isUserActionSuccess = true;
+        this.showToast("User removed successfully", "success");
         // Refresh users list
         await this.viewUsers(hallId);
       } catch (error) {
@@ -579,6 +1111,7 @@ export default {
           this.userActionMessage = "Failed to remove user from hall.";
         }
         this.isUserActionSuccess = false;
+        this.showToast("Failed to remove user", "error");
       } finally {
         this.isLoading = false;
       }
@@ -587,7 +1120,14 @@ export default {
     // Open edit modal for a specific user
     openEditUserModal(user) {
       this.editUser = { ...user }; // Clone the user object
-      this.newSeatNumber = ""; // Reset the new seat number
+      
+      // Set default seat number based on role
+      if (user.role === 'TEACHER') {
+        this.newSeatNumber = "Teacher Stage";
+      } else {
+        this.newSeatNumber = user.seatNumber || "";
+      }
+      
       this.showEditUserModal = true;
       this.editUserMessage = "";
       this.isEditUserSuccess = false;
@@ -609,6 +1149,21 @@ export default {
         this.isEditUserSuccess = false;
         return;
       }
+      
+      // For teachers, we allow "Teacher Stage" as a valid seat
+      const isTeacherStage = this.newSeatNumber === "Teacher Stage";
+      
+      // Only validate seat format for non-teacher seats
+      if (!isTeacherStage) {
+        // Validate seat number format (e.g., "A1", "B2")
+        const seatPattern = /^[A-Z]\d+$/;
+        if (!seatPattern.test(this.newSeatNumber)) {
+          this.editUserMessage = "Invalid seat number format. Use format like 'A1', 'B2'.";
+          this.isEditUserSuccess = false;
+          return;
+        }
+      }
+      
       this.isLoading = true;
       try {
         const response = await axios.put(
@@ -617,8 +1172,9 @@ export default {
             seatNumber: this.newSeatNumber,
           }
         );
-        this.editUserMessage = "User's seat number updated successfully.";
+        this.editUserMessage = "User's seat assignment updated successfully.";
         this.isEditUserSuccess = true;
+        this.showToast("Seat assignment updated successfully", "success");
         // Refresh users list
         await this.viewUsers(this.currentHallId);
         // Close the modal after a short delay
@@ -630,9 +1186,10 @@ export default {
         if (error.response && error.response.data) {
           this.editUserMessage = error.response.data;
         } else {
-          this.editUserMessage = "Failed to update user's seat number.";
+          this.editUserMessage = "Failed to update user's seat assignment.";
         }
         this.isEditUserSuccess = false;
+        this.showToast("Failed to update seat assignment", "error");
       } finally {
         this.isLoading = false;
       }
@@ -671,6 +1228,7 @@ export default {
         );
         this.editMessage = "Exam hall updated successfully!";
         this.isEditSuccess = true;
+        this.showToast("Exam hall updated successfully", "success");
         await this.loadAllExamHoles();
         // Close the modal after a short delay
         setTimeout(() => {
@@ -680,6 +1238,7 @@ export default {
         console.error("Error updating exam hall:", error);
         this.editMessage = "Failed to update exam hall.";
         this.isEditSuccess = false;
+        this.showToast("Failed to update exam hall", "error");
       } finally {
         this.isLoading = false;
       }
@@ -687,18 +1246,30 @@ export default {
 
     // Assign single user to hall
     async assignUserToHall() {
-      if (!this.selectedUserId || !this.selectedSeatNumber) {
-        this.userActionMessage = "Please select a user and enter a seat number.";
+      if (!this.selectedUserId) {
+        this.userActionMessage = "Please select a user.";
+        this.isUserActionSuccess = false;
+        return;
+      }
+      
+      if (!this.selectedSeatNumber) {
+        this.userActionMessage = "Please enter a seat number.";
         this.isUserActionSuccess = false;
         return;
       }
 
-      // Validate seat number format (e.g., "A1", "B2")
-      const seatPattern = /^[A-Z]\d+$/;
-      if (!seatPattern.test(this.selectedSeatNumber)) {
-        this.userActionMessage = "Invalid seat number format. Use format like 'A1', 'B2'.";
-        this.isUserActionSuccess = false;
-        return;
+      // For teachers, we allow "Teacher Stage" as a valid seat
+      const isTeacherStage = this.selectedSeatNumber === "Teacher Stage";
+      
+      // Only validate seat format for non-teacher seats
+      if (!isTeacherStage) {
+        // Validate seat number format (e.g., "A1", "B2")
+        const seatPattern = /^[A-Z]\d+$/;
+        if (!seatPattern.test(this.selectedSeatNumber)) {
+          this.userActionMessage = "Invalid seat number format. Use format like 'A1', 'B2'.";
+          this.isUserActionSuccess = false;
+          return;
+        }
       }
 
       this.isLoading = true;
@@ -711,8 +1282,9 @@ export default {
           seatNumber: this.selectedSeatNumber,
         });
 
-        this.userActionMessage = `User assigned successfully to seat ${this.selectedSeatNumber}.`;
+        this.userActionMessage = `User assigned successfully to ${this.selectedSeatNumber}.`;
         this.isUserActionSuccess = true;
+        this.showToast(`User assigned to ${this.selectedSeatNumber}`, "success");
 
         // Refresh users list
         await this.viewUsers(this.currentHallId);
@@ -720,6 +1292,8 @@ export default {
         // Reset assignment form
         this.selectedUserId = "";
         this.selectedSeatNumber = "";
+        this.isTeacherSelected = false;
+        this.selectedUserRole = null;
       } catch (error) {
         console.error("Error assigning user to hall:", error);
         if (error.response && error.response.data) {
@@ -728,11 +1302,11 @@ export default {
           this.userActionMessage = "Failed to assign user to hall.";
         }
         this.isUserActionSuccess = false;
+        this.showToast("Failed to assign user", "error");
       } finally {
         this.isLoading = false;
       }
     },
-
 
     // Open Add All Users Confirmation Modal
     addAllUsersToHall(hallId) {
@@ -754,6 +1328,7 @@ export default {
         );
         this.userActionMessage = "All available users have been assigned to the hall successfully.";
         this.isUserActionSuccess = true;
+        this.showToast("All users assigned successfully", "success");
         // Refresh users list
         await this.viewUsers(this.currentHallId);
       } catch (error) {
@@ -764,6 +1339,7 @@ export default {
           this.userActionMessage = "Failed to add all users to hall.";
         }
         this.isUserActionSuccess = false;
+        this.showToast("Failed to assign all users", "error");
       } finally {
         this.isLoading = false;
         this.showAddAllConfirm = false;
@@ -791,8 +1367,6 @@ export default {
       this.fileUpload = event.target.files[0];
     },
 
-
-
     // Close Import Users Modal
     closeImportModal() {
       this.showImportModal = false;
@@ -803,7 +1377,6 @@ export default {
   },
 };
 </script>
-
 
 
 
